@@ -54,7 +54,8 @@ credentials and resets it between sequences.
   - path, query and body values equal to a mapped live id are translated before the environment answers, a path
     parameter by the collection it names, except query values that page a list (`limit`, `offset`, `page` and the
     like), which count items rather than name one. A literal route segment is not translated. A nested collection is
-    the live path's concrete parent values, so two parents do not share one child map, and learning and translation use
+    the live path's concrete parent values, each parameter decoded once, so two parents do not share one child map and
+    spellings replay treats as equal name one. A second encoding stays a different parent. Learning and translation use
     that same live path.
     A path value the map does not know, and the environment's state does not hold, is reported `unmapped-id`.
 - A call is checked against the served tool's input schema first, as the MCP server checks it; a call it refuses is

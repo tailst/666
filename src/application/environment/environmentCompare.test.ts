@@ -139,6 +139,38 @@ describe("collections under different parents", () => {
     ).toBe("/api/orgs/1/users/10");
     expect(map.env(110, "/api/orgs/2/users")).toBe(20);
   });
+
+  it("shares a child map when the same parent is spelled with one encoding", () => {
+    const encoded = ["api", "orgs", "%32", "users", "101"];
+    const plain = ["api", "orgs", "2", "users", "101"];
+    const twice = ["api", "orgs", "%2532", "users", "101"];
+    expect(collectionScope(nestedUsers, encoded)).toBe("/api/orgs/2/users");
+    expect(collectionScope(nestedUsers, plain)).toBe(
+      collectionScope(nestedUsers, encoded),
+    );
+    // Decoding again would make this parent the same as `2`.
+    expect(collectionScope(nestedUsers, twice)).toBe("/api/orgs/%32/users");
+    const map = new IdMap();
+    map.learn(101, 10, "/api/orgs/1/users");
+    map.learn(101, 20, collectionScope(nestedUsers, encoded));
+    const literals = new Set([0, 1, 3]);
+    const translate = (segments: readonly string[], path: string) => {
+      const scopes = parameterScopes(nestedUsers, segments);
+      return translatePath(
+        path,
+        map,
+        (index) => scopes.get(index),
+        (index) => literals.has(index),
+      );
+    };
+    // Org 1 taught 101 → 10 globally. The child learned under `%32` is the one `/api/orgs/2/users/101` names.
+    expect(translate(plain, "/api/orgs/2/users/101")).toBe(
+      "/api/orgs/2/users/20",
+    );
+    expect(translate(twice, "/api/orgs/%2532/users/101")).toBe(
+      "/api/orgs/%2532/users/10",
+    );
+  });
 });
 
 describe("compareEnvironment", () => {

@@ -742,7 +742,7 @@ Ids are learned only from an answer the environment
 gave that call itself, from its state or a recording of that very call, request line and body, never from another call's
 recording replayed in its place and never from a recording whose body the probe omitted. The answer's own `id`, `uuid` or `guid` also maps within the collection the call names, since
 two collections can reuse a live id, and an equal pair stays in that collection. A live id in a later request's path, query or body is translated before the
-environment answers, a path parameter by the collection the live path names (a nested collection keeps its parent values, and a literal route segment stays), except a query value that pages a list, such as `limit`
+environment answers, a path parameter by the collection the live path names (a nested collection keeps its parent values, each decoded once, and a literal route segment stays), except a query value that pages a list, such as `limit`
 or `page`. Each call is checked against the served tool's input schema first, as the MCP server checks it. After mapping, two clock values compare by format only (ISO-8601 strings, and epoch numbers under
 time-named fields), and two different values each side generated on its own compare equal: both UUIDs, or one length of
 eight or more with the same character classes and a digit. The report counts each kind of normalised value.
