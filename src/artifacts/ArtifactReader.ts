@@ -167,6 +167,7 @@ export interface ArtifactReader {
     | ZipPackageFormat
     | "asar"
     | "godot-pck"
+    | "gzip"
     | "pyinstaller"
     | "file";
   entries(
