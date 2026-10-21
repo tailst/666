@@ -25,7 +25,9 @@ credentials and resets it between sequences.
   time, as state extraction orders them). A request is matched to the manifest tool of the
   same method whose path template it fits with the most literal segments; format-rule parameters must fit their format
   once percent-decoded, as replay reads them.
-  Path values, query values the tool takes and a JSON body become the tool's arguments.
+  Query values the tool takes and a JSON body become the tool's arguments. A path argument is the raw segment: the
+  environment decodes it once, so a segment encoded twice is not read as a second decoding. Replay matches that raw
+  argument against a recorded segment that equals it, equals its one decoding, or decodes once to it.
 - A record without a usable request line (a redacted URL, a transaction the capture cannot attribute, an unparseable
   URL or no method) is not replayed, nor is a request to another origin than the probe's application (`other-origin`),
   which is the origin with the most JSON-like records, as the manifest chooses its own. A request with no recorded
@@ -38,17 +40,22 @@ credentials and resets it between sequences.
     string values are unique on each side and shared between them;
   - identifier fields (`id`, `uuid`, `guid`, and names ending in `_id`, `Id`, `ID`, `_uuid` or `Uuid`) of paired objects,
     and of the two answers to the same call, map the live value to the environment's value; a create's two answers map
-    the new ids. The `id`, `uuid` or `guid` of the answer's own entities (at the read view's entity or list location, a
-    write's response location, or else the root) also maps within the collection the call names,
-    since two collections can reuse a live id for different entities. Outside identifier fields, a string maps when the
-    environment's state holds it as an id, and the keys of two objects keyed by ids map when their values pair (keys
-    that partly overlap only when they are digits, UUIDs or their entries' identities, and every value pairs);
+    the new ids, including a response that is only that id at the write plan's identity location. The `id`, `uuid` or
+    `guid` of the answer's own entities (at the read view's entity or list location, a write's response location, or
+    else the root) also maps within the collection the call names, since two collections can reuse a live id for
+    different entities. An equal pair is kept in that collection, so another collection's mapping of the same live id
+    does not replace it. A collection's map is a bijection: the first pairing of either side wins. Outside identifier
+    fields, a string maps when the environment's state holds it as an id, and the keys of two objects keyed by ids map
+    when their values pair (keys that partly overlap only when they are digits, UUIDs or their entries' identities, and
+    every value pairs);
   - ids are learned only from an answer the environment gave this call, from its state or from a recording of exactly
     this call, its whole request line and its request body: a recording of another call that replay answers with
-    instead holds other entities;
+    instead holds other entities. A tool that takes a body does not match a recording whose body the probe did not send;
   - path, query and body values equal to a mapped live id are translated before the environment answers, a path
     parameter by the collection it names, except query values that page a list (`limit`, `offset`, `page` and the
-    like), which count items rather than name one.
+    like), which count items rather than name one. A literal route segment is not translated. A nested collection is
+    the live path's concrete parent values, so two parents do not share one child map, and learning and translation use
+    that same live path.
     A path value the map does not know, and the environment's state does not hold, is reported `unmapped-id`.
 - A call is checked against the served tool's input schema first, as the MCP server checks it; a call it refuses is
   reported `refused`. A browser probe keeps its request bodies; one captured without response bodies is refused, since

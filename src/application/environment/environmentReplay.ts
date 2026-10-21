@@ -58,9 +58,14 @@ export const decodedPathSegment = (segment: string): string => {
   }
 };
 
-/** Replay's path rule: a supplied value matches a recorded segment equal to it verbatim or after percent-decoding. */
+/**
+ * Replay's path rule: a supplied value matches a recorded segment equal to it, equal after decoding the segment, or
+ * equal to the segment after decoding the value once. Decoding both sides would make `book%2531` match `book1`.
+ */
 export const pathValueMatches = (segment: string, value: string): boolean =>
-  segment === value || decodedPathSegment(segment) === value;
+  segment === value ||
+  decodedPathSegment(segment) === value ||
+  decodedPathSegment(value) === segment;
 
 /** Count how many supplied path and query values the recorded request line satisfies. */
 const scoreExchange = (

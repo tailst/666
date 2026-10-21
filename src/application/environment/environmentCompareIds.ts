@@ -28,17 +28,16 @@ export class IdMap {
   readonly #envValues = new Set<string>();
   #conflicts = 0;
 
-  /** Pair a live value with an environment value; the first pairing of either side wins, and within a collection the first of that collection. */
+  /**
+   * Pair a live value with an environment value. The first pairing of either side wins. A collection keeps its own
+   * first pairing, including a pair of equal values, and one environment value stands for one live value there.
+   */
   learn(live: string | number, env: string | number, scope?: string): void {
     const liveKey = String(live);
     const envKey = String(env);
+    if (scope !== undefined && !this.#pairScoped(scope, liveKey, env, envKey))
+      return;
     if (liveKey === envKey) return;
-    if (scope !== undefined) {
-      const scoped = this.#scoped.get(scope) ?? new Map();
-      if (!scoped.has(liveKey)) scoped.set(liveKey, env);
-      this.#scoped.set(scope, scoped);
-      this.#envValues.add(envKey);
-    }
     const known = this.#toEnv.get(liveKey);
     if (known !== undefined) {
       if (String(known) !== envKey) this.#conflicts += 1;
@@ -51,6 +50,32 @@ export class IdMap {
     this.#toEnv.set(liveKey, env);
     this.#toLive.set(envKey, live);
     this.#envValues.add(envKey);
+  }
+
+  /** Store one collection's pairing. False when it conflicts with a pairing that collection already kept. */
+  #pairScoped(
+    scope: string,
+    liveKey: string,
+    env: string | number,
+    envKey: string,
+  ): boolean {
+    const scoped =
+      this.#scoped.get(scope) ?? new Map<string, string | number>();
+    const known = scoped.get(liveKey);
+    if (known !== undefined) {
+      if (String(known) !== envKey) this.#conflicts += 1;
+      return false;
+    }
+    for (const value of scoped.values()) {
+      if (String(value) === envKey) {
+        this.#conflicts += 1;
+        return false;
+      }
+    }
+    scoped.set(liveKey, env);
+    this.#scoped.set(scope, scoped);
+    this.#envValues.add(envKey);
+    return true;
   }
 
   /** The environment's value for a live one: the collection's own when a scope is given and it knows one, else the probe's. */
@@ -217,6 +242,8 @@ interface LearnContext {
   readonly scope: string | undefined;
   /** JSON pointer of the answer's own entity, or of the array holding its entities. */
   readonly entityAt: string;
+  /** The write answers with the new id alone, at `entityAt`, rather than an entity object. */
+  readonly identity: boolean;
 }
 
 /** Two values under one key as a pair of ids, when they are: an identifier field, or outside one only a string the state holds as an id, since a counter that equals an id is not one. */
@@ -260,7 +287,16 @@ const learnAt = (
       });
     return;
   }
-  if (!isObject(live) || !isObject(env)) return;
+  if (!isObject(live) || !isObject(env)) {
+    if (
+      context.identity &&
+      place.at === context.entityAt &&
+      isScalarId(live) &&
+      isScalarId(env)
+    )
+      context.map.learn(live, env, context.scope);
+    return;
+  }
   if (learnKeyedEntries(live, env, context.map, context.heldIds)) return;
   const own = place.own || place.at === context.entityAt;
   for (const [key, value] of Object.entries(live)) {
@@ -283,7 +319,8 @@ const learnAt = (
 /**
  * Learn identifier pairs from the live and environment answers to one call: identifier fields, and strings the state holds
  * as ids, of objects that pair, at any depth. The identity fields of the answer's own entities, the object or the items of
- * the array at `entityAt` (the root by default), are also learned under `scope`, the collection the call names.
+ * the array at `entityAt` (the root by default), are also learned under `scope`, the collection the call names. A write
+ * whose response is only the new id (`identity`) learns that scalar at `entityAt`.
  */
 export const learnIds = (
   live: JsonValue | undefined,
@@ -294,6 +331,7 @@ export const learnIds = (
     readonly heldIds: ReadonlySet<string>;
     readonly scope?: string;
     readonly entityAt?: string;
+    readonly identity?: boolean;
   },
 ): void =>
   learnAt(
@@ -304,6 +342,7 @@ export const learnIds = (
       heldIds: known.heldIds,
       scope: known.scope,
       entityAt: known.entityAt ?? "",
+      identity: known.identity === true,
     },
     { at: "", own: false },
   );
@@ -345,16 +384,20 @@ export const environmentArguments = (
 
 /**
  * A request path with every segment that decodes to a mapped live identifier replaced by the environment's value,
- * encoded; `scopeAt` names the collection of the segment at a position after the leading slash, whose own mapping wins.
+ * encoded. `scopeAt` names the collection of the segment at a position after the leading slash, whose own mapping wins.
+ * `literalAt` keeps a template's literal segments, so a mapped id cannot rename the route itself.
  */
 export const translatePath = (
   path: string,
   map: IdMap,
   scopeAt: (index: number) => string | undefined = () => undefined,
+  literalAt: (index: number) => boolean = () => false,
 ): string =>
   path
     .split("/")
     .map((segment, index) => {
+      const position = index - 1;
+      if (literalAt(position)) return segment;
       let decoded = segment;
       try {
         decoded = decodeURIComponent(segment);
@@ -362,7 +405,7 @@ export const translatePath = (
         return segment;
       }
       const env =
-        decoded === "" ? undefined : map.env(decoded, scopeAt(index - 1));
+        decoded === "" ? undefined : map.env(decoded, scopeAt(position));
       return env === undefined ? segment : encodeURIComponent(String(env));
     })
     .join("/");

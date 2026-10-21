@@ -380,7 +380,7 @@ data-plane operations and no children. Served
 operations and one intake extension instead, and the catalog holds the read
 tools and only the write tools whose effect the capture confirmed: a read tool
 is described as answering from the state where the state backs it, and a
-served write tool by the effect it applies to the state and the body members it
+served write tool by the effect it applies to the state and the quoted body members it
 accepts.
 
 ## Serve from the state
@@ -731,17 +731,18 @@ sequence made against the live application, seeded as it was for the capture and
 makes no network call: whoever records the probes drives the application with its own credentials. For each probe it
 resets the environment's state, takes the requests in the order they were made (record order when any lacks a start time), matches each to the manifest tool of the
 same method whose path template fits with the most literal segments (a format-rule parameter must fit its format once
-percent-decoded),
-answers it as the served environment would, and compares that answer with the application's.
+percent-decoded). A path argument is the raw segment, which the environment decodes once.
+It answers the call as the served environment would, and compares that answer with the application's.
 
 A re-seeded application holds the same entities under other ids, so the comparison maps them. Objects in the two answers
 to one call pair by a natural key, a string field unique on each side that both share, such as a name or a slug; their
 identifier fields (`id`, `uuid`, `guid`, and names ending in `_id`, `Id`, `ID`, `_uuid` or `Uuid`), and those of two single
-answers such as a create's, map the live value to the environment's. Ids are learned only from an answer the environment
+answers such as a create's, map the live value to the environment's, including a create that returns only the new id.
+Ids are learned only from an answer the environment
 gave that call itself, from its state or a recording of that very call, request line and body, never from another call's
-recording replayed in its place, and the answer's own `id`, `uuid` or `guid` also maps within the collection the call names, since
-two collections can reuse a live id. A live id in a later request's path, query or body is translated before the
-environment answers, a path parameter by the collection it names, except a query value that pages a list, such as `limit`
+recording replayed in its place and never from a recording whose body the probe omitted. The answer's own `id`, `uuid` or `guid` also maps within the collection the call names, since
+two collections can reuse a live id, and an equal pair stays in that collection. A live id in a later request's path, query or body is translated before the
+environment answers, a path parameter by the collection the live path names (a nested collection keeps its parent values, and a literal route segment stays), except a query value that pages a list, such as `limit`
 or `page`. Each call is checked against the served tool's input schema first, as the MCP server checks it. After mapping, two clock values compare by format only (ISO-8601 strings, and epoch numbers under
 time-named fields), and two different values each side generated on its own compare equal: both UUIDs, or one length of
 eight or more with the same character classes and a digit. The report counts each kind of normalised value.

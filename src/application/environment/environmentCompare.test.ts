@@ -25,8 +25,17 @@ import {
   scenarioHeaderOnlyCaptureEvidence,
 } from "../../../tests/fixtures/browserScenarioCapture.js";
 import { compareEnvironment } from "./environmentCompare.js";
-import { environmentArguments, IdMap } from "./environmentCompareIds.js";
-import { matchProbeRequest } from "./environmentCompareMatch.js";
+import {
+  environmentArguments,
+  IdMap,
+  translatePath,
+} from "./environmentCompareIds.js";
+import {
+  collectionScope,
+  matchProbeRequest,
+  parameterScopes,
+} from "./environmentCompareMatch.js";
+import type { EnvironmentManifestTool } from "./environmentSource.js";
 import { isCut } from "./environmentCompareProbe.js";
 import { parseCaptureEvidence } from "./environmentSource.js";
 
@@ -83,7 +92,7 @@ describe("matchProbeRequest", () => {
     ).toBeUndefined();
   });
 
-  it("fits a format-rule parameter by its decoded value, as replay matches it", () => {
+  it("fits a format-rule parameter by its decoded value and passes the raw segment", () => {
     const item = matchProbeRequest(source.manifest, {
       method: "GET",
       path: "/api/books/%31",
@@ -91,7 +100,44 @@ describe("matchProbeRequest", () => {
       body: undefined,
     });
     expect(item?.tool.path_template).toBe("/api/books/{numeric}");
-    expect(item?.args).toEqual({ id: "1" });
+    // The environment decodes this once, as replay decodes a recorded segment once.
+    expect(item?.args).toEqual({ id: "%31" });
+  });
+});
+
+const nestedUsers = {
+  path_template: "/api/orgs/{numeric}/users/{numeric}",
+  params: [
+    { index: 2, name: "org_id", rule: "numeric" },
+    { index: 4, name: "id", rule: "numeric" },
+  ],
+} as EnvironmentManifestTool;
+
+describe("collections under different parents", () => {
+  it("names each parent's collection from the live path, and does not rename a literal segment", () => {
+    const orgOne = ["api", "orgs", "1", "users", "110"];
+    const orgTwo = ["api", "orgs", "2", "users", "110"];
+    expect(collectionScope(nestedUsers, orgOne)).toBe("/api/orgs/1/users");
+    expect(collectionScope(nestedUsers, orgTwo)).toBe("/api/orgs/2/users");
+    expect(
+      collectionScope(nestedUsers, ["api", "orgs", "", "users", "110"]),
+    ).toBe("/api/orgs/{}/users");
+    const map = new IdMap();
+    map.learn(110, 10, "/api/orgs/1/users");
+    map.learn(110, 20, "/api/orgs/2/users");
+    map.learn("users", "stored-tag");
+    const scopes = parameterScopes(nestedUsers, orgOne);
+    // Template indexes of api, orgs and users; the two parameters are not literals.
+    const literals = new Set([0, 1, 3]);
+    expect(
+      translatePath(
+        "/api/orgs/1/users/110",
+        map,
+        (index) => scopes.get(index),
+        (index) => literals.has(index),
+      ),
+    ).toBe("/api/orgs/1/users/10");
+    expect(map.env(110, "/api/orgs/2/users")).toBe(20);
   });
 });
 
@@ -229,6 +275,11 @@ describe("what the comparison translates and learns", () => {
         ["POST", "/api/tags/search", [{ id: 102 }], 200, { q: "first" }],
       ]).ids_mapped,
     ).toBe(1);
+    // A body the probe did not send is not the body the recording sent.
+    expect(
+      compareExtra([["POST", "/api/tags/search", [{ id: 102 }], 200]])
+        .ids_mapped,
+    ).toBe(0);
   });
 
   it("compares a large binary body only by status, as it does large text", () => {
@@ -272,6 +323,110 @@ describe("what the comparison translates and learns", () => {
     expect(probe?.ids_mapped).toBe(0);
     expect(probe?.results[0]?.differences).toEqual([
       { category: "value", pointer: "/0/owner_id", live: "107", env: "7" },
+    ]);
+  });
+});
+
+const compareRows = (
+  recorded: readonly TimedCaptureRow[],
+  probe: readonly TimedCaptureRow[],
+) => {
+  const capture = timedCaptureEvidence(recorded);
+  const built = environmentStateServeFixture(capture);
+  const report = compareEnvironment({
+    source: environmentServeSource(built),
+    captureValue: capture,
+    probes: [{ label: "probe", value: timedCaptureEvidence(probe) }],
+    operation: "environment-compare",
+  });
+  if (!report.ok) throw report.error;
+  return report.value.probes[0]!;
+};
+
+describe("ids the comparison used to misread", () => {
+  it("reads a twice-encoded path id once, so book%2531 is not book1", () => {
+    const probe = compareRows(
+      [
+        ["GET", "/api/files/book1", { id: "book1", name: "One" }],
+        ["GET", "/api/files/book%2531", { id: "book%31", name: "Encoded" }],
+        ["GET", "/api/files/other", { id: "other", name: "Other" }],
+      ],
+      [["GET", "/api/files/book%2531", { id: "book%31", name: "Encoded" }]],
+    );
+    expect(probe.results[0]?.equal).toBe(true);
+    expect(probe.results[0]?.categories).not.toContain("value");
+  });
+
+  it("learns a create that answers with only the new id", () => {
+    const item = (id: number, name: string) => ({ id, name });
+    const third = item(3, "Third");
+    const probe = compareRows(
+      [
+        ["GET", "/api/items", [item(1, "First"), item(2, "Second")]],
+        ["GET", "/api/items/1", item(1, "First")],
+        ["GET", "/api/items/2", item(2, "Second")],
+        ["POST", "/api/items", { created: 3 }, 201, { name: "Third" }],
+        ["GET", "/api/items/3", third],
+        ["GET", "/api/items", [item(1, "First"), item(2, "Second"), third]],
+      ],
+      [
+        ["GET", "/api/items", [item(101, "First"), item(102, "Second")]],
+        ["POST", "/api/items", { created: 103 }, 201, { name: "Third" }],
+        ["GET", "/api/items/103", item(103, "Third")],
+      ],
+    );
+    expect(probe.results.map((step) => step.equal)).toEqual([true, true, true]);
+    expect(probe.ids_mapped).toBeGreaterThan(0);
+    const scalar = compareRows(
+      [
+        ["GET", "/api/items", [item(1, "First"), item(2, "Second")]],
+        ["GET", "/api/items/1", item(1, "First")],
+        ["GET", "/api/items/2", item(2, "Second")],
+        ["POST", "/api/items", 3, 201, { name: "Third" }],
+        ["GET", "/api/items/3", third],
+        ["GET", "/api/items", [item(1, "First"), item(2, "Second"), third]],
+      ],
+      [
+        ["GET", "/api/items", [item(101, "First"), item(102, "Second")]],
+        ["POST", "/api/items", 103, 201, { name: "Third" }],
+        ["GET", "/api/items/103", item(103, "Third")],
+      ],
+    );
+    expect(scalar.results.map((step) => step.equal)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+  });
+
+  it("keeps each parent's child ids and does not rename a literal route segment", () => {
+    const users = (id: number, name: string) => ({ id, name });
+    const probe = compareRows(
+      [
+        ["GET", "/api/orgs/1/users", [users(10, "Ann"), users(11, "Bea")]],
+        ["GET", "/api/orgs/2/users", [users(20, "Cy"), users(21, "Di")]],
+        ["GET", "/api/orgs/1/users/10", users(10, "Ann")],
+        ["GET", "/api/orgs/2/users/20", users(20, "Cy")],
+        ["GET", "/api/tags", [{ id: "stored-tag", name: "Books" }]],
+        ["GET", "/api/tags/stored-tag", { id: "stored-tag", name: "Books" }],
+        ["GET", "/api/books", [users(1, "First")]],
+      ],
+      [
+        ["GET", "/api/orgs/1/users", [users(110, "Ann"), users(111, "Bea")]],
+        ["GET", "/api/orgs/2/users", [users(110, "Cy"), users(111, "Di")]],
+        ["GET", "/api/orgs/1/users/110", users(110, "Ann")],
+        ["GET", "/api/orgs/2/users/110", users(110, "Cy")],
+        ["GET", "/api/tags", [{ id: "books", name: "Books" }]],
+        ["GET", "/api/books", [users(1, "First")]],
+      ],
+    );
+    expect(probe.results.map((step) => step.categories)).toEqual([
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
     ]);
   });
 });

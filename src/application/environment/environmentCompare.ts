@@ -19,6 +19,7 @@ import {
 } from "./environmentCompareIds.js";
 import {
   collectionScope,
+  literalPositions,
   matchProbeRequest,
   parameterScopes,
   type ProbeToolCall,
@@ -38,6 +39,7 @@ import {
   type EnvironmentSource,
 } from "./environmentSource.js";
 import {
+  decodedPathSegment,
   selectsRecordedLine,
   type ReplayArguments,
   type ReplayResult,
@@ -131,18 +133,27 @@ const emptyNormalised = (): Normalised => ({
 const isSuccess = (status: number | null): boolean =>
   status !== null && status >= 200 && status < 300;
 
-/** Where a call's answer holds its own entities, and the collection they belong to: a read view's entity or list pointer, a write's response pointer, else the root. */
+/** Where a call's answer holds its own entities, and the collection they belong to: a read view's entity or list pointer, a write's response pointer, else the root. A write that answers with only the new id learns that scalar. */
 const entityOf = (
   run: ProbeRun,
   tool: EnvironmentManifestTool,
-): { readonly scope: string; readonly at: string } => {
+  segments: readonly string[],
+): {
+  readonly scope: string;
+  readonly at: string;
+  readonly identity: boolean;
+} => {
   const view = run.store?.state.views.get(tool.name);
   const plan = run.store?.state.writes.get(tool.name);
-  const at =
-    view?.shape === "item" || view?.shape === "list"
-      ? view.pointer
-      : (plan?.response?.pointer ?? plan?.observation?.pointer ?? "");
-  return { scope: collectionScope(tool), at };
+  const response = plan?.response;
+  const scope = collectionScope(tool, segments);
+  if (view?.shape === "item" || view?.shape === "list")
+    return { scope, at: view.pointer, identity: false };
+  const identity = response?.shape === "identity";
+  const at = identity
+    ? (response.pointer ?? "")
+    : (response?.pointer ?? plan?.observation?.pointer ?? "");
+  return { scope, at, identity };
 };
 
 const fromState = (answer: ReplayResult): boolean =>
@@ -176,10 +187,9 @@ const answersCall = (
   )
     return false;
   const body = environmentToolArguments(call.tool).body;
-  const sent = body === undefined ? undefined : args[body];
-  return (
-    sent === undefined || same(run.recordedBodies.get(exchange.ordinal), sent)
-  );
+  // A tool with no body parameter matches; one that takes a body matches only the body this call sent, including none.
+  if (body === undefined) return true;
+  return same(run.recordedBodies.get(exchange.ordinal), args[body]);
 };
 
 /** A served tool's input check: the first problem with a call's arguments, or undefined. */
@@ -255,14 +265,24 @@ const compareStep = (
     outcome: { env_status: number | null; differences: Difference[] },
   ): CompareStep | undefined =>
     live === undefined ? undefined : stepOf(base, call, outcome);
-  // Matched in the environment's terms, so a tool whose path holds a seeded id literally still matches; each path
-  // parameter translates by the collection it names, where the request already fits a tool.
+  // Matched in the environment's terms, so a tool whose path holds a seeded id literally still matches. Scopes and
+  // literals come from the live path: translating a parent id first would name a different collection than learning did.
+  const liveSegments = request.path.slice(1).split("/");
   const fitted = matchProbeRequest(manifest, request);
   const scopes =
-    fitted === undefined ? undefined : parameterScopes(fitted.tool);
+    fitted === undefined
+      ? undefined
+      : parameterScopes(fitted.tool, liveSegments);
+  const literals =
+    fitted === undefined ? undefined : literalPositions(fitted.tool);
   const call = matchProbeRequest(manifest, {
     ...request,
-    path: translatePath(request.path, run.map, (index) => scopes?.get(index)),
+    path: translatePath(
+      request.path,
+      run.map,
+      (index) => scopes?.get(index),
+      (index) => literals?.has(index) === true,
+    ),
   });
   if (call === undefined)
     return report(call, {
@@ -278,9 +298,9 @@ const compareStep = (
   const held = heldIds(run.store);
   const unknownPath = call.pathArguments.some((name) => {
     const value = call.args[name];
-    return (
-      typeof value === "string" && !run.map.hasEnv(value) && !held.has(value)
-    );
+    if (typeof value !== "string") return false;
+    const id = decodedPathSegment(value);
+    return !run.map.hasEnv(id) && !held.has(id);
   });
   const refusedWith = (message: string): CompareStep | undefined =>
     report(call, {
@@ -300,13 +320,14 @@ const compareStep = (
     status: answered.value.status,
     body: envBody(run, answered.value),
   };
-  const entity = entityOf(run, call.tool);
+  const entity = entityOf(run, call.tool, liveSegments);
   // Another call's recording holds other entities, whose ids would map wrongly and, the first pairing winning, for good.
   if (answersCall(run, call, args, answered.value))
     learnIds(live.body, env.body, run.map, {
       heldIds: heldIds(run.store),
       scope: entity.scope,
       entityAt: entity.at,
+      identity: entity.identity,
     });
   const compared = compareAnswers(live, env, run.map, entity);
   for (const key of NORMALISED_KEYS)

@@ -27,6 +27,19 @@ describe("IdMap", () => {
     map.learn("same", "same");
     expect(map.size).toBe(0);
   });
+
+  it("keeps an equal id in its collection and rejects a second live id for one environment id there", () => {
+    const map = new IdMap();
+    map.learn(101, 1, "/api/books");
+    map.learn(101, 101, "/api/authors");
+    map.learn(102, 1, "/api/books");
+    expect(map.env(101, "/api/authors")).toBe(101);
+    expect(map.env(101, "/api/books")).toBe(1);
+    expect(map.env(102, "/api/books")).toBeUndefined();
+    expect(map.env(102)).toBeUndefined();
+    expect(map.conflicts).toBe(1);
+    expect(map.size).toBe(1);
+  });
 });
 
 describe("pairElements", () => {
@@ -101,6 +114,25 @@ describe("learnIds", () => {
     learnIds([{ n: 1, id: 3 }], [{ n: 1, id: 4 }], map, { heldIds: new Set() });
     expect(map.env(3)).toBe(4);
   });
+
+  it("learns a scalar identity response at its pointer and ignores any other root scalar", () => {
+    const map = new IdMap();
+    learnIds(103, 3, map, {
+      heldIds: new Set(),
+      scope: "/api/books",
+      identity: true,
+    });
+    learnIds({ created: 104 }, { created: 4 }, map, {
+      heldIds: new Set(),
+      scope: "/api/books",
+      entityAt: "/created",
+      identity: true,
+    });
+    learnIds(7, 8, map, { heldIds: new Set(), scope: "/api/books" });
+    expect(map.env(103, "/api/books")).toBe(3);
+    expect(map.env(104)).toBe(4);
+    expect(map.env(7)).toBeUndefined();
+  });
 });
 
 describe("learnIds over objects keyed by ids", () => {
@@ -146,6 +178,20 @@ describe("translatePath", () => {
       "/api/releases/env%401/deploys/3/",
     );
     expect(translatePath("/api/%E0%A4%A/x", map)).toBe("/api/%E0%A4%A/x");
+  });
+
+  it("leaves a literal route segment in place when that text is a mapped id", () => {
+    const map = new IdMap();
+    map.learn("books", "stored-tag");
+    map.learn(1, 9);
+    expect(
+      translatePath(
+        "/api/books/1",
+        map,
+        () => undefined,
+        (index) => index < 2,
+      ),
+    ).toBe("/api/books/9");
   });
 });
 

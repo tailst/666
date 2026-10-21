@@ -280,7 +280,8 @@ served. Their descriptions say the tool:
 
 - applies its effect to the served state;
 - names its target type;
-- lists its required and accepted body members.
+- lists its required and accepted body members as quoted JSON strings, within the
+  description sample budget.
 
 The discovery budget charges them. `--replay-only` and the replay fallback are
 unchanged.

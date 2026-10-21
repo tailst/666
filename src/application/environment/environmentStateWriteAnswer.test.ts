@@ -19,8 +19,10 @@ import {
 } from "../../../tests/fixtures/environmentStateWrites.js";
 import type { TimedCaptureRow } from "../../../tests/fixtures/analysisView.js";
 import { seededUuid } from "../../domain/analysisView/environmentStateWriteValues.js";
+import type { StateWritePlan } from "../../domain/analysisView/environmentStateWriteRules.js";
 import type { ReplayArguments } from "./environmentReplay.js";
 import { servedCatalog } from "./environmentState.js";
+import { describeWrite } from "./environmentStateWriteDescription.js";
 import {
   environmentToolArguments,
   environmentToolDefinitions,
@@ -428,10 +430,10 @@ describe("served catalog", () => {
       "post_books",
     ]);
     expect(described.get("post_books")?.description).toContain(
-      "creates an entity of /api/books in the served environment state (body members name; required: name), modelled on the recorded calls",
+      'creates an entity of /api/books in the served environment state (body members "name"; required: "name"), modelled on the recorded calls',
     );
     expect(described.get("patch_books_by_id")?.description).toContain(
-      "changes the entity the path names in the served environment state (body members name; send at least one)",
+      'changes the entity the path names in the served environment state (body members "name"; send at least one)',
     );
     expect(described.get("delete_books_by_id")?.description).toContain(
       "removes the entity the path names from the served environment state",
@@ -440,6 +442,40 @@ describe("served catalog", () => {
     expect(described.get("get_books")?.description).toContain(
       "answers from the served environment state where the state backs this tool",
     );
+  });
+
+  it("quotes body member names and omits one that exceeds the sample budget", () => {
+    const plan: StateWritePlan = {
+      tool: "post_books",
+      effect: "create",
+      target: "/api/books",
+      served: true,
+      reason: null,
+      exemplar_ordinal: null,
+      observation: null,
+      response: null,
+      body: {
+        accepted: ["name, title", "note\nline"],
+        fixed: [],
+        required: [],
+        identity: null,
+      },
+      rules: [],
+      collection: null,
+      insert: null,
+      merge: null,
+      checked_record_ordinals: [],
+      contradicted_by: null,
+    };
+    expect(describeWrite(plan)).toContain(
+      'body members "name, title", "note\\nline"',
+    );
+    const long = describeWrite({
+      ...plan,
+      body: { ...plan.body!, accepted: ["m".repeat(2000)] },
+    });
+    expect(long).not.toContain("m".repeat(2000));
+    expect(Buffer.byteLength(long ?? "", "utf8")).toBeLessThan(1200);
   });
 
   it("serves every manifest tool unchanged in replay mode", () => {

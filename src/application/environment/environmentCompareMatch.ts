@@ -36,35 +36,67 @@ export interface ProbeToolCall {
   readonly ignoredQuery: readonly string[];
 }
 
-/** A tool's path segments up to `end`, a parameter as `{}`, so tools naming one parameter differently share collections. */
-const collectionAt = (tool: EnvironmentManifestTool, end: number): string => {
+/**
+ * A tool's path segments up to `end`. A parameter stays `{}` unless `segments` gives the live value at that position,
+ * so two parents of one template do not share a child collection. An empty parent stays `{}`.
+ */
+const collectionAt = (
+  tool: EnvironmentManifestTool,
+  end: number,
+  segments?: readonly string[],
+): string => {
   const params = new Set(tool.params.map((param) => param.index));
   return `/${tool.path_template
     .slice(1)
     .split("/")
     .slice(0, end)
-    .map((segment, index) => (params.has(index) ? "{}" : segment))
+    .map((segment, index) => {
+      if (!params.has(index)) return segment;
+      const value = segments?.[index];
+      return value === undefined || value === "" ? "{}" : value;
+    })
     .join("/")}`;
 };
 
 /** The collection a call of the tool names: its path, less the trailing parameter of an item route. */
-export const collectionScope = (tool: EnvironmentManifestTool): string => {
+export const collectionScope = (
+  tool: EnvironmentManifestTool,
+  segments?: readonly string[],
+): string => {
   const length = tool.path_template.slice(1).split("/").length;
   return collectionAt(
     tool,
     tool.params.some((param) => param.index === length - 1)
       ? length - 1
       : length,
+    segments,
   );
 };
 
 /** The collection each path parameter names an entity of: the path before it, by the parameter's position. */
 export const parameterScopes = (
   tool: EnvironmentManifestTool,
+  segments?: readonly string[],
 ): ReadonlyMap<number, string> =>
   new Map(
-    tool.params.map((param) => [param.index, collectionAt(tool, param.index)]),
+    tool.params.map((param) => [
+      param.index,
+      collectionAt(tool, param.index, segments),
+    ]),
   );
+
+/** Template positions that are literals, so a mapped id is not written over the route. */
+export const literalPositions = (
+  tool: EnvironmentManifestTool,
+): ReadonlySet<number> => {
+  const params = new Set(tool.params.map((param) => param.index));
+  return new Set(
+    tool.path_template
+      .slice(1)
+      .split("/")
+      .flatMap((_, index) => (params.has(index) ? [] : [index])),
+  );
+};
 
 interface Fit {
   readonly tool: EnvironmentManifestTool;
@@ -121,7 +153,8 @@ export const matchProbeRequest = (
   const pathArguments: string[] = [];
   for (const param of tool.params) {
     const name = names.path.get(param.name) ?? param.name;
-    args[name] = decodedPathSegment(segments[param.index]!);
+    // The environment decodes a path id once. Passing the raw segment keeps `book%2531` from becoming `book1`.
+    args[name] = segments[param.index]!;
     pathArguments.push(name);
   }
   const ignoredQuery: string[] = [];
