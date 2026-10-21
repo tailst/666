@@ -1025,6 +1025,45 @@ it.each(["offset", "start", "_start"])(
   },
 );
 
+it("does not let an empty ?page=2 page prove membership all", () => {
+  const state = stateOf(
+    captureOf([
+      ["GET", "/api/orgs/1/books/1", { id: 1, name: "Alpha" }],
+      ["GET", "/api/orgs/2/books?page=2", []],
+    ]),
+  );
+  expect(viewOf(state, "get_orgs_books_by_id")).toMatchObject({
+    shape: "list",
+    membership: "recorded",
+  });
+});
+
+it("does not let ?page=2&per_page=1 prove membership all when it lists the collection", () => {
+  const state = stateOf(
+    captureOf([
+      ["GET", "/api/orgs/1/books?page=2&per_page=1", [{ id: 1, name: "Alpha" }]],
+      ["GET", "/api/orgs/1/books/1", { id: 1, name: "Alpha" }],
+    ]),
+  );
+  expect(viewOf(state, "get_orgs_books_by_id")).toMatchObject({
+    shape: "list",
+    membership: "recorded",
+  });
+});
+
+it("keeps membership all when page 1 lists the collection", () => {
+  const state = stateOf(
+    captureOf([
+      ["GET", "/api/orgs/1/books?page=1", [{ id: 1, name: "Alpha" }]],
+      ["GET", "/api/orgs/1/books/1", { id: 1, name: "Alpha" }],
+    ]),
+  );
+  expect(viewOf(state, "get_orgs_books_by_id")).toMatchObject({
+    shape: "list",
+    membership: "all",
+  });
+});
+
 it("keeps membership all when a zero offset lists the collection", () => {
   const state = stateOf(
     captureOf([

@@ -177,9 +177,9 @@ const listFacts = (
       if (body === undefined || items === undefined) return;
       items.forEach((item) => union.add(item));
       // A line that only pages its list can still hold all of it. A nonzero
-      // offset, start or _start skips a prefix serving does not apply, so it
-      // does not prove membership all; a page that is not the collection keeps
-      // the view recorded, as an unmatched page already does.
+      // offset, start or _start, or a page after the first, is not item 0, so
+      // it does not prove membership all; a page that is not the collection
+      // keeps the view recorded, as an unmatched page already does.
       if (all && pagesOnly(record.query)) {
         const ids = items.map((item) => scalarText(item[field]) ?? "");
         const expected = context

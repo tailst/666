@@ -410,9 +410,10 @@ const answerList = (
     return fromRecording(source, tool, args, "body-unusable");
   const collection = collectionPathOf(base, false);
   const type = store.type(view.type);
-  // A call that names a nonzero offset, start or _start stays on the recorded
-  // path: serving does not skip to that index. An argument-less call still
-  // lists the collection, using a paging line only as its envelope.
+  // A call that names a nonzero offset, start or _start, or a page after the
+  // first, stays on the recorded path: serving does not skip to that index.
+  // An argument-less call still lists the collection, using a paging line only
+  // as its envelope.
   const whole =
     view.membership === "all" &&
     !(exact && pageStart(base.query ?? undefined) > 0);

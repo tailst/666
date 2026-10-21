@@ -1719,6 +1719,24 @@ describe("what later calls must keep consistent", () => {
     });
   });
 
+  it("does not let a later empty ?page=2 page contradict a create", () => {
+    const alpha = { id: 1, name: "Alpha", org: "1" };
+    const beta = { id: 2, name: "Beta", org: "2" };
+    const rows: TimedCaptureRow[] = [
+      ["GET", "/api/orgs/1/books", [alpha]],
+      ["GET", "/api/orgs/1/books/1", alpha],
+      ["GET", "/api/orgs/2/books?page=2", []],
+      ["POST", "/api/orgs/2/books", beta, 201, { name: "Beta" }],
+      ["GET", "/api/orgs/2/books/2", beta],
+      ["GET", "/api/orgs/2/books?page=2", []],
+    ];
+    const { writes } = environmentStateViewOf(timedCaptureEvidence(rows));
+    expect(writes.find((plan) => plan.effect === "create")).toMatchObject({
+      served: true,
+      checked_record_ordinals: [4],
+    });
+  });
+
   it.each(["offset", "start", "_start"])(
     "does not let a later empty ?%s=1 page contradict a create",
     (name) => {
