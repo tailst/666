@@ -18,7 +18,12 @@ import {
 } from "../../../tests/fixtures/environmentStateWrites.js";
 import type { JsonValue } from "../jsonValue.js";
 import { ok } from "../result.js";
-import { itemTarget, SimulatedState } from "./environmentStateWriteChecks.js";
+import {
+  checkedLines,
+  itemTarget,
+  servedLine,
+  SimulatedState,
+} from "./environmentStateWriteChecks.js";
 import {
   laterObservation,
   type ObservationSearch,
@@ -826,6 +831,27 @@ describe("what a read shows of a write", () => {
       checked_record_ordinals: [3],
     });
   });
+
+  it("confirms a document write whose path encodes a parent the plain read holds", () => {
+    const rows: TimedCaptureRow[] = [
+      ["GET", "/api/orgs/uid/acme1/settings", { theme: "light", lang: "en" }],
+      [
+        "PATCH",
+        "/api/orgs/uid/%61cme1/settings",
+        { theme: "dark", lang: "en" },
+        200,
+        { theme: "dark" },
+      ],
+      ["GET", "/api/orgs/uid/acme1/settings", { theme: "dark", lang: "en" }],
+    ];
+    const { writes } = environmentStateViewOf(timedCaptureEvidence(rows), [
+      "after-uid-literal",
+    ]);
+    expect(writes.find((plan) => plan.effect === "document")).toMatchObject({
+      served: true,
+      checked_record_ordinals: [2],
+    });
+  });
 });
 
 describe("reads named as serving names them", () => {
@@ -933,6 +959,98 @@ describe("reads named as serving names them", () => {
     expect(gated(rows, "patch_books_by_id")).toMatchObject({
       served: false,
       contradicted_by: 4,
+    });
+  });
+});
+
+describe("encoded parent spellings", () => {
+  it("names the plainly held entity from a path that encodes its parent", () => {
+    const type = "/api/orgs/uid/{uid}/books";
+    const collection = "/api/orgs/uid/acme1/books";
+    const state = new SimulatedState(
+      [
+        {
+          type,
+          collection,
+          id: "1",
+          fields: { id: 1, name: "Alpha" },
+          view_fields: [],
+          record_ordinals: [],
+        },
+      ],
+      [],
+    );
+    expect(
+      itemTarget(state, type, { path: "/api/orgs/uid/%61cme1/books/1" }),
+    ).toEqual({ collection, id: "1" });
+  });
+
+  it("answers an encoded read from the plain checked line", () => {
+    const tool = {
+      name: "get_orgs_books_by_uid",
+      method: "GET",
+      path_template: "/api/orgs/uid/{uid}/books",
+      record_ordinals: [0],
+    };
+    const record = {
+      ordinal: 0,
+      method: "GET",
+      path: "/api/orgs/uid/acme1/books",
+      query: undefined,
+      status: 200,
+      start: 0,
+      end: 0,
+    };
+    const lines = checkedLines({
+      tools: [tool],
+      records: [record],
+      views: new Map([
+        [
+          tool.name,
+          {
+            tool: tool.name,
+            type: "/api/orgs/uid/{uid}/books",
+            shape: "list",
+            pointer: "",
+            fields: ["id"],
+            required_fields: ["id"],
+            checked_record_ordinals: [0],
+            membership: "all",
+            counters: [],
+          },
+        ],
+      ]),
+    });
+    expect(
+      servedLine(lines.get(tool.name), {
+        ...record,
+        ordinal: 1,
+        path: "/api/orgs/uid/%61cme1/books",
+      }),
+    ).toEqual({ ordinal: 0, collection: "/api/orgs/uid/acme1/books" });
+  });
+
+  it("confirms an update whose path encodes a parent the plain reads hold", () => {
+    const alpha = { id: 1, org: "acme1", name: "Alpha" };
+    const renamed = { id: 1, org: "acme1", name: "Renamed" };
+    const rows: TimedCaptureRow[] = [
+      ["GET", "/api/orgs/uid/acme1/books", [alpha]],
+      ["GET", "/api/orgs/uid/acme1/books/1", alpha],
+      [
+        "PATCH",
+        "/api/orgs/uid/%61cme1/books/1",
+        renamed,
+        200,
+        { name: "Renamed" },
+      ],
+      ["GET", "/api/orgs/uid/acme1/books/1", renamed],
+    ];
+    const { writes } = environmentStateViewOf(timedCaptureEvidence(rows), [
+      "after-uid-literal",
+    ]);
+    expect(writes.find((plan) => plan.effect === "update")).toMatchObject({
+      served: true,
+      checked_record_ordinals: [3],
     });
   });
 });

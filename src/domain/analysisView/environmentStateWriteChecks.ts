@@ -11,6 +11,7 @@ import {
   isParam,
   listItems,
   missingRequiredFields,
+  pathSegmentMatches,
   renderStateEntity,
   renderStateList,
   replaceAt,
@@ -97,9 +98,9 @@ export const checkedLines = (input: {
 
 /**
  * The checked line serving answers a read's call from, ranked as replay ranks lines: every
- * parameter the read's value verbatim or once percent-decoded and the query the read's, then the
- * most verbatim parameters, then recorded order. A read with no query falls back, as serving does,
- * on a whole list's lines that only page it.
+ * parameter the read's value verbatim or either spelling once percent-decoded and the query the
+ * read's, then the most verbatim parameters, then recorded order. A read with no query falls back,
+ * as serving does, on a whole list's lines that only page it.
  */
 export const servedLine = (
   lines: CheckedLines | undefined,
@@ -130,7 +131,11 @@ const bestLine = (
         if (lines.params.has(index)) verbatim += 1;
         return true;
       }
-      return lines.params.has(index) && decodedSegment(segment) === read[index];
+      return (
+        lines.params.has(index) &&
+        read[index] !== undefined &&
+        pathSegmentMatches(segment, read[index])
+      );
     });
     if (matches && (best === undefined || verbatim > best.verbatim))
       best = {
@@ -280,16 +285,18 @@ interface ReadBodies {
 }
 
 /** An item read: the answer the held entity renders into the served envelope must equal the recording; a recorded 404 or 410 agrees with none held. */
-/** How many of a held collection's segments match a path's verbatim, or undefined when one matches neither verbatim nor once percent-decoded. */
+/** How many of a held collection's segments match a path's verbatim, or undefined when one matches neither verbatim nor either spelling once percent-decoded. */
 const segmentMatch = (
   held: readonly string[],
   read: readonly string[],
 ): number | undefined => {
   if (held.length !== read.length) return undefined;
   let verbatim = 0;
-  for (const [index, segment] of held.entries())
-    if (segment === read[index]) verbatim += 1;
-    else if (decodedSegment(segment) !== read[index]) return undefined;
+  for (const [index, segment] of held.entries()) {
+    const value = read[index]!;
+    if (segment === value) verbatim += 1;
+    else if (!pathSegmentMatches(segment, value)) return undefined;
+  }
   return verbatim;
 };
 
@@ -476,8 +483,9 @@ export const checkListRead = (
     base === undefined ? undefined : listItems(base, view.pointer);
   if (body === undefined || base === undefined || baseItems === undefined)
     return undefined;
-  // A nonzero offset, start or _start stays on the recorded path, as serving
-  // lists it: the page skips a prefix the whole-collection answer would include.
+  // A nonzero offset, start or _start, or a page after the first, stays on the
+  // recorded path, as serving lists it: the page skips a prefix the
+  // whole-collection answer would include.
   const whole = view.membership === "all" && pageStart(record.query) === 0;
   // Serving answers a page too small for the collection from its recording, so such a read checks nothing.
   const size = pageBound(record.query, baseItems.length);

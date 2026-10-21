@@ -132,8 +132,9 @@ response, with the entity re-rendered when the response carries it.
 **Documents.** A document write merges the body's members (replaces them, for
 `PUT`) into the document object that holds most of them: the root or one
 member. Later calls write at the exemplar's object. Document reads answer only on their recorded line, so a write is
-served only at the path the state holds the document at, and the gate treats a
-recorded write at another path as an unmodelled write. A recorded write whose
+served only at the path the state holds the document at, each segment verbatim
+or either spelling once percent-decoded, and the gate treats a recorded write
+at another path as an unmodelled write. A recorded write whose
 body serving would refuse (a member of another JSON type than the document
 holds) is `unexplained-change`.
 
@@ -191,12 +192,12 @@ members they sent.
 from the state:
 
 - an item read of a state-backed item view, of the entity serving would name:
-  in a held collection the read's path matches, each segment verbatim or once
-  percent-decoded and verbatim spellings first, the id percent-decoded once,
-  then as written;
+  in a held collection the read's path matches, each segment verbatim or either
+  spelling once percent-decoded and verbatim spellings first, the id
+  percent-decoded once, then as written;
 - a list or document read on one of its view's checked request lines,
   chosen as replay chooses the line for the read's call: each path parameter
-  the read's value verbatim or once percent-decoded, preferring verbatim
+  the read's value verbatim or either spelling once percent-decoded, preferring verbatim
   spellings, then recorded order, and the query values decoded, in any order.
   A read with no query on a whole list falls back, as serving does, on a
   checked line that only pages it. A line whose query repeats a name with
@@ -208,9 +209,9 @@ from the state:
   other sizes and range still bound the page) of a
   whole list checks nothing once the collection holds more entities than the
   page, which serving then answers from its recording. A read whose query names
-  a nonzero `offset`, `start` or `_start` is compared as the recorded members,
-  as serving lists them, so an empty later page does not contradict a create
-  the page skips.
+  a nonzero `offset`, `start` or `_start`, or a `page` after the first, is
+  compared as the recorded members, as serving lists them, so an empty later
+  page does not contradict a create the page skips.
 - A read made while a modelled write to its entity or collection was still
   running, starting before that write ended, checks nothing: it may show the
   state before or after the write. Nor does such a read show an unknown entity
@@ -350,7 +351,8 @@ answers with the tool's latest recorded 400, 404 or 410 response, or 2xx JSON
 them, so the read gate's `membership: "all"` also covers a line that only pages
 its list (`limit`, `offset`, `page`, `per_page`, `perpage`, `page_size`,
 `pagesize`, `size`, `start`, `_start`, `_end`) when its recording listed the
-whole collection. A nonzero `offset`, `start` or `_start` does not establish
+whole collection. A nonzero `offset`, `start` or `_start`, or a `page` after
+the first, does not establish
 that membership: serving does not skip to that index, so the line stays on the
 recorded path unless another line proves the collection. A call that names such
 a line lists the recorded members still held, including when membership is
