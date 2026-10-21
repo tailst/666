@@ -38,8 +38,9 @@ export interface ProbeToolCall {
 
 /**
  * A tool's path segments up to `end`. A parameter stays `{}` unless `segments` gives the live value at that position,
- * decoded once, so two parents of one template do not share a child collection and spellings replay treats as equal
- * name one. An empty parent stays `{}`. A second encoding stays distinct: decoding again would join it with the value.
+ * decoded once and encoded again, so two parents of one template do not share a child collection, spellings replay
+ * treats as equal name one, and a decoded slash stays inside its segment. An empty parent stays `{}`. A second
+ * encoding stays distinct: decoding again would join it with the value.
  */
 const collectionAt = (
   tool: EnvironmentManifestTool,
@@ -56,7 +57,7 @@ const collectionAt = (
       const value = segments?.[index];
       return value === undefined || value === ""
         ? "{}"
-        : decodedPathSegment(value);
+        : encodeURIComponent(decodedPathSegment(value));
     })
     .join("/")}`;
 };

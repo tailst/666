@@ -148,8 +148,8 @@ describe("collections under different parents", () => {
     expect(collectionScope(nestedUsers, plain)).toBe(
       collectionScope(nestedUsers, encoded),
     );
-    // Decoding again would make this parent the same as `2`.
-    expect(collectionScope(nestedUsers, twice)).toBe("/api/orgs/%32/users");
+    // Decoding again would make this parent the same as `2`. Encoding the once-decoded segment keeps it distinct.
+    expect(collectionScope(nestedUsers, twice)).toBe("/api/orgs/%2532/users");
     const map = new IdMap();
     map.learn(101, 10, "/api/orgs/1/users");
     map.learn(101, 20, collectionScope(nestedUsers, encoded));
@@ -170,6 +170,66 @@ describe("collections under different parents", () => {
     expect(translate(twice, "/api/orgs/%2532/users/101")).toBe(
       "/api/orgs/%2532/users/10",
     );
+  });
+
+  it("keeps child ids apart when a decoded parent contains slashes", () => {
+    const nested = {
+      path_template:
+        "/api/groups/uid/{uid}/folders/uid/{uid_2}/users/{numeric}",
+      params: [
+        { index: 3, name: "uid", rule: "after-uid-literal" },
+        { index: 6, name: "uid_2", rule: "after-uid-literal" },
+        { index: 8, name: "id", rule: "numeric" },
+      ],
+    } as EnvironmentManifestTool;
+    const first = [
+      "api",
+      "groups",
+      "uid",
+      "a%2Ffolders%2Fuid%2Fb",
+      "folders",
+      "uid",
+      "c",
+      "users",
+      "101",
+    ];
+    const second = [
+      "api",
+      "groups",
+      "uid",
+      "a",
+      "folders",
+      "uid",
+      "b%2Ffolders%2Fuid%2Fc",
+      "users",
+      "101",
+    ];
+    const firstScope =
+      "/api/groups/uid/a%2Ffolders%2Fuid%2Fb/folders/uid/c/users";
+    const secondScope =
+      "/api/groups/uid/a/folders/uid/b%2Ffolders%2Fuid%2Fc/users";
+    expect(collectionScope(nested, first)).toBe(firstScope);
+    expect(collectionScope(nested, second)).toBe(secondScope);
+    const map = new IdMap();
+    map.learn(101, 10, collectionScope(nested, first));
+    map.learn(101, 20, collectionScope(nested, second));
+    const literals = new Set([0, 1, 2, 4, 5, 7]);
+    const translate = (segments: readonly string[], path: string) => {
+      const scopes = parameterScopes(nested, segments);
+      return translatePath(
+        path,
+        map,
+        (index) => scopes.get(index),
+        (index) => literals.has(index),
+      );
+    };
+    expect(translate(first, `/${first.join("/")}`)).toBe(
+      "/api/groups/uid/a%2Ffolders%2Fuid%2Fb/folders/uid/c/users/10",
+    );
+    expect(translate(second, `/${second.join("/")}`)).toBe(
+      "/api/groups/uid/a/folders/uid/b%2Ffolders%2Fuid%2Fc/users/20",
+    );
+    expect(map.env(101, secondScope)).toBe(20);
   });
 });
 
