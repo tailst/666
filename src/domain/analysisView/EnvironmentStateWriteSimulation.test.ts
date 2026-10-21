@@ -39,6 +39,36 @@ const gated = (rows: readonly TimedCaptureRow[], tool: string) => {
 
 const RENAMED = renamedBook(FIRST_BOOK, "Renamed Book", 3);
 
+/** A book whose constant names organisation 1, created at exchange `seconds`. */
+const tiedToOrgOne = (id: number, name: string, seconds: number): Book => ({
+  ...book(id, name, bookClock(seconds)),
+  org: "/orgs/1",
+});
+
+/**
+ * Two organisations, a create tied to the first by a constant that names it, then the same constant
+ * recorded under the second. `confirmOwn` also reads the created book back from the first.
+ */
+const tiedCreateRows = (confirmOwn: boolean): TimedCaptureRow[] => {
+  const alpha = { ...book(1, "Alpha", "2026-10-01T09:00:00Z"), org: "/orgs/1" };
+  const beta = { ...book(10, "Beta", "2026-10-01T10:00:00Z"), org: "/orgs/2" };
+  const made = tiedToOrgOne(2, "Made", 4);
+  const other = tiedToOrgOne(11, "Other", confirmOwn ? 6 : 5);
+  const rows: TimedCaptureRow[] = [
+    ["GET", "/api/orgs/1/books", [alpha]],
+    ["GET", "/api/orgs/2/books", [beta]],
+    ["GET", "/api/orgs/1/books/1", alpha],
+    ["GET", "/api/orgs/2/books/10", beta],
+    ["POST", "/api/orgs/1/books", made, 201, { name: "Made" }],
+  ];
+  if (confirmOwn) rows.push(["GET", "/api/orgs/1/books/2", made]);
+  rows.push(
+    ["POST", "/api/orgs/2/books", other, 201, { name: "Other" }],
+    ["GET", "/api/orgs/2/books/11", other],
+  );
+  return rows;
+};
+
 describe("reads compared as the served environment answers them", () => {
   /** Item reads in a `{data, revision}` envelope, a rename, then a read recorded at `revision`. */
   const renamedInEnvelope = (revision: string): TimedCaptureRow[] => [
@@ -1726,6 +1756,27 @@ describe("what later calls must keep consistent", () => {
     expect(writes.find((plan) => plan.effect === "create")).toMatchObject({
       served: true,
       checked_record_ordinals: [4],
+    });
+  });
+});
+
+describe("creates tied to one collection", () => {
+  it("does not let a later create in another collection confirm the plan", () => {
+    expect(gated(tiedCreateRows(false), "post_orgs_books_by_id")).toMatchObject(
+      {
+        served: false,
+        reason: "unconfirmed",
+        collection: "/api/orgs/1/books",
+        checked_record_ordinals: [],
+      },
+    );
+  });
+
+  it("still confirms the plan from a read of the collection it is tied to", () => {
+    expect(gated(tiedCreateRows(true), "post_orgs_books_by_id")).toMatchObject({
+      served: true,
+      collection: "/api/orgs/1/books",
+      checked_record_ordinals: [5],
     });
   });
 });

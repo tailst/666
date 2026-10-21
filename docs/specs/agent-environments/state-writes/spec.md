@@ -167,7 +167,9 @@ modelled write whose call the plan does not explain brings its entity to the
 recorded outcome instead, without attribution. A later create whose generated
 values take another form than serving gives them (a sequence value out of
 order, a clock in another format, a non-UUID unique value) makes the plan
-`unexplained-change`; integer identities are left to the id mapping. An update or
+`unexplained-change`; integer identities are left to the id mapping. A later
+create outside the collection a tied plan permits is unmodelled, as serving
+refuses that call, so a read of what it recorded does not confirm the plan. An update or
 delete names its entity as an item read does (below).
 
 Any other write that may have changed state, including a redirected or

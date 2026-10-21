@@ -255,6 +255,13 @@ export const applyCreate = (
   const type = draft.plan.target!;
   const idField = context.idField(type);
   const collection = normalizedPath(step.record.path);
+  // Serving refuses a create outside the collection a tied plan permits, so one here is not simulated or counted.
+  if (
+    built(draft) &&
+    draft.plan.collection !== null &&
+    draft.plan.collection !== collection
+  )
+    return UNKNOWN;
   const body = requestObject(context, step.record);
   const observed = createdObservation(context, step, {
     type,
