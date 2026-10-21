@@ -1,5 +1,6 @@
 import { stateBodyJson } from "../../domain/analysisView/EnvironmentStateAccumulator.js";
 import {
+  collectionMatch,
   collectionPathOf,
   listItems,
   missingRequiredFields,
@@ -7,7 +8,6 @@ import {
   renderStateList,
   replaceAt,
   scalarText,
-  segmentsOf,
   type JsonObject,
   type RecordedViewReason,
   type StateEntity,
@@ -30,7 +30,6 @@ import type { JsonValue } from "../../domain/jsonValue.js";
 import { err, ok, type Result } from "../../domain/result.js";
 import {
   decodedPathSegment,
-  pathValueMatches,
   REPLAY_BODY_LIMIT_BYTES,
   replayAnswer,
   replayEnvironmentTool,
@@ -219,23 +218,6 @@ export const itemCall = (
   return segments !== undefined && last?.supplied === true
     ? { segments, id: last.text }
     : undefined;
-};
-
-/** How many supplied segments a held collection matches verbatim, when it matches the call under replay's path rule. */
-export const collectionMatch = (
-  collection: string,
-  segments: readonly CallSegment[],
-): number | undefined => {
-  const held = segmentsOf(collection);
-  if (held.length !== segments.length) return undefined;
-  let verbatim = 0;
-  for (const [index, { text, supplied }] of segments.entries()) {
-    const segment = held[index]!;
-    if (supplied ? !pathValueMatches(segment, text) : segment !== text)
-      return undefined;
-    if (supplied && segment === text) verbatim += 1;
-  }
-  return verbatim;
 };
 
 /** The entity an item call names, preferring verbatim collection spellings as replay does; the id is tried percent-decoded, then as written. */

@@ -1779,4 +1779,74 @@ describe("creates tied to one collection", () => {
       checked_record_ordinals: [5],
     });
   });
+
+  /** A book whose constant names organisation `acme1`, created at exchange `seconds`. */
+  const tiedToAcme = (id: number, name: string, seconds: number): Book => ({
+    ...book(id, name, bookClock(seconds)),
+    team: "/orgs/uid/acme1",
+  });
+
+  const acmeRows = (
+    laterPath: string,
+    heldEncoded: boolean,
+  ): TimedCaptureRow[] => {
+    const alpha = {
+      ...book(1, "Alpha", "2026-10-01T09:00:00Z"),
+      team: "/orgs/uid/acme1",
+    };
+    const made = tiedToAcme(2, "Made", 2);
+    const other = tiedToAcme(3, "Other", heldEncoded ? 5 : 3);
+    const rows: TimedCaptureRow[] = [
+      ["GET", "/api/orgs/uid/acme1/books", [alpha]],
+      ["GET", "/api/orgs/uid/acme1/books/1", alpha],
+    ];
+    if (heldEncoded) {
+      const encoded = {
+        ...book(10, "Encoded", "2026-10-01T10:00:00Z"),
+        team: "/orgs/uid/acme1",
+      };
+      rows.push(
+        ["GET", "/api/orgs/uid/%61cme1/books", [encoded]],
+        ["GET", "/api/orgs/uid/%61cme1/books/10", encoded],
+      );
+    }
+    rows.push(
+      ["POST", "/api/orgs/uid/acme1/books", made, 201, { name: "Made" }],
+      ["POST", laterPath, other, 201, { name: "Other" }],
+      ["GET", "/api/orgs/uid/acme1/books/3", other],
+    );
+    return rows;
+  };
+
+  const acmeCreate = (rows: readonly TimedCaptureRow[]) => {
+    const { writes } = environmentStateViewOf(timedCaptureEvidence(rows), [
+      "after-uid-literal",
+    ]);
+    const plan = writes.find((candidate) => candidate.effect === "create");
+    if (plan === undefined) throw new Error("The gate planned no create");
+    return plan;
+  };
+
+  it("confirms a tied create whose later call spells the held collection encoded", () => {
+    expect(
+      acmeCreate(acmeRows("/api/orgs/uid/%61cme1/books", false)),
+    ).toMatchObject({
+      served: true,
+      collection: "/api/orgs/uid/acme1/books",
+      checked_record_ordinals: [4],
+    });
+  });
+
+  it("does not treat an encoded spelling as the tied collection when that spelling is held itself", () => {
+    // Serving keeps the verbatim encoded collection, outside the plain tie. The plain read of the
+    // entity that create did not add is related to the exemplar, so the plan is a side effect.
+    expect(
+      acmeCreate(acmeRows("/api/orgs/uid/%61cme1/books", true)),
+    ).toMatchObject({
+      served: false,
+      reason: "side-effect",
+      collection: "/api/orgs/uid/acme1/books",
+      checked_record_ordinals: [],
+    });
+  });
 });
