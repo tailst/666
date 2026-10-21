@@ -26,7 +26,7 @@ import {
   type StateToolFacts,
   type StateView,
 } from "./environmentStateRules.js";
-import { pageBound, pagesOnly } from "./environmentStatePaging.js";
+import { pageBound, pageStart, pagesOnly } from "./environmentStatePaging.js";
 
 /** A query as replay compares a call's: decoded values by name, in any order; undefined when it repeats a name with another value, which no call's arguments can carry. */
 const queryKey = (query: string | undefined): string | undefined => {
@@ -476,10 +476,13 @@ export const checkListRead = (
     base === undefined ? undefined : listItems(base, view.pointer);
   if (body === undefined || base === undefined || baseItems === undefined)
     return undefined;
+  // A nonzero offset, start or _start stays on the recorded path, as serving
+  // lists it: the page skips a prefix the whole-collection answer would include.
+  const whole = view.membership === "all" && pageStart(record.query) === 0;
   // Serving answers a page too small for the collection from its recording, so such a read checks nothing.
   const size = pageBound(record.query, baseItems.length);
   if (
-    view.membership === "all" &&
+    whole &&
     size !== undefined &&
     state.members(view.type, check.collection).length > size
   )
@@ -487,10 +490,9 @@ export const checkListRead = (
   // A usable body that no longer holds the list is not what serving answers on this line.
   const items = listItems(body, view.pointer);
   const bodies = { ...check, body, base, items: items ?? [], baseItems };
-  const outcome =
-    view.membership === "all"
-      ? checkAllList(state, view, bodies)
-      : checkRecordedList(state, view, bodies);
+  const outcome = whole
+    ? checkAllList(state, view, bodies)
+    : checkRecordedList(state, view, bodies);
   return items === undefined ? { ...outcome, pass: false } : outcome;
 };
 

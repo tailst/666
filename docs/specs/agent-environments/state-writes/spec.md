@@ -205,7 +205,10 @@ from the state:
   of zero is no bound on a line whose recording listed items under it, while its
   other sizes and range still bound the page) of a
   whole list checks nothing once the collection holds more entities than the
-  page, which serving then answers from its recording.
+  page, which serving then answers from its recording. A read whose query names
+  a nonzero `offset`, `start` or `_start` is compared as the recorded members,
+  as serving lists them, so an empty later page does not contradict a create
+  the page skips.
 - A read made while a modelled write to its entity or collection was still
   running, starting before that write ended, checks nothing: it may show the
   state before or after the write. Nor does such a read show an unknown entity
@@ -345,7 +348,11 @@ answers with the tool's latest recorded 400, 404 or 410 response, or 2xx JSON
 them, so the read gate's `membership: "all"` also covers a line that only pages
 its list (`limit`, `offset`, `page`, `per_page`, `perpage`, `page_size`,
 `pagesize`, `size`, `start`, `_start`, `_end`) when its recording listed the
-whole collection. A list call with no query argument answers from such a line
+whole collection. A nonzero `offset`, `start` or `_start` does not establish
+that membership: serving does not skip to that index, so the line stays on the
+recorded path unless another line proves the collection. A call that names such
+a line lists the recorded members still held, including when membership is
+`all`. A list call with no query argument answers from such a line
 of an `all` view of the collection its path arguments name, with
 `replay.exact_match` false; a collection with no such line answers from its
 recording. A call that asks for a page

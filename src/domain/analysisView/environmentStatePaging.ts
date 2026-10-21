@@ -27,6 +27,25 @@ export const pagesOnly = (query: string | undefined): boolean =>
   query === undefined ||
   [...parseUrlQueryParameterNames(query)].every(isPagingParameter);
 
+/** Parameters that name the first item of a page. `page` counts pages, not items. */
+const PAGE_START_PARAMETERS = new Set(["offset", "start", "_start"]);
+
+/**
+ * The first item a query asks for: the greatest whole-number `offset`, `start`
+ * or `_start`, or 0 when it names none. Serving lists a whole collection from
+ * item 0 and does not skip to this index, so a nonzero start stays on the
+ * recorded path in the read gate, in serving and in the write gate.
+ */
+export const pageStart = (query: string | undefined): number => {
+  let start = 0;
+  for (const [name, value] of iterateUrlQueryParameters(query ?? "")) {
+    if (!PAGE_START_PARAMETERS.has(name.toLowerCase()) || !/^\d+$/u.test(value))
+      continue;
+    start = Math.max(start, Number(value));
+  }
+  return start;
+};
+
 /** Paging parameters that bound how many items a page holds. */
 const PAGE_SIZE_PARAMETERS = new Set([
   "limit",

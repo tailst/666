@@ -860,6 +860,34 @@ describe("paged lines", () => {
     });
   });
 
+  it.each(["offset", "start", "_start"])(
+    "does not list an entity a confirmed create adds on an empty ?%s=1 page",
+    (name) => {
+      const alpha = { id: 1, name: "Alpha", org: "1" };
+      const beta = { id: 2, name: "Beta", org: "2" };
+      const books = servedFrom([
+        ["GET", "/api/orgs/1/books", [alpha]],
+        ["GET", "/api/orgs/1/books/1", alpha],
+        ["GET", `/api/orgs/2/books?${name}=1`, []],
+        ["POST", "/api/orgs/2/books", beta, 201, { name: "Beta" }],
+        ["GET", "/api/orgs/2/books/2", beta],
+      ]);
+      const created = books.answer("post_orgs_books_by_id", {
+        id: "2",
+        body: { name: "Gamma" },
+      }).body as Book;
+      expect(books.answer("get_orgs_books_by_id", { id: "2" }).body).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: created.id })]),
+      );
+      expect(
+        books.answer("get_orgs_books_by_id", { id: "2", [name]: "1" }),
+      ).toMatchObject({
+        body: [],
+        state: { source: "state", membership: "all", listed: 0 },
+      });
+    },
+  );
+
   it("answers a zero limit a whole line recorded empty from that recording once a create fills its collection", () => {
     const alpha = { id: 1, name: "Alpha", org: "1" };
     const beta = { id: 2, name: "Beta", org: "2" };

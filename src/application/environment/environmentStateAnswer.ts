@@ -17,6 +17,7 @@ import {
 } from "../../domain/analysisView/environmentStateRules.js";
 import {
   pageBound,
+  pageStart,
   pagesOnly,
 } from "../../domain/analysisView/environmentStatePaging.js";
 import { isAbsence } from "../../domain/analysisView/environmentStateWriteChecks.js";
@@ -427,27 +428,32 @@ const answerList = (
     return fromRecording(source, tool, args, "body-unusable");
   const collection = collectionPathOf(base, false);
   const type = store.type(view.type);
+  // A call that names a nonzero offset, start or _start stays on the recorded
+  // path: serving does not skip to that index. An argument-less call still
+  // lists the collection, using a paging line only as its envelope.
+  const whole =
+    view.membership === "all" &&
+    !(exact && pageStart(base.query ?? undefined) > 0);
   // A requested page the collection has outgrown is answered as recorded, never with more items than it asked for.
   const size = exact
     ? pageBound(base.query ?? undefined, recorded.length)
     : undefined;
   if (
-    view.membership === "all" &&
+    whole &&
     size !== undefined &&
     store.inCollection(view.type, collection).length > size
   )
     return fromRecording(source, tool, args, "page-exceeded");
-  const members: readonly StateEntity[] =
-    view.membership === "all"
-      ? store.inCollection(view.type, collection)
-      : recorded.flatMap((item) => {
-          const id = scalarText(item[type?.id_field ?? ""]);
-          const entity =
-            id === undefined
-              ? undefined
-              : store.entity(view.type, collection, id);
-          return entity === undefined ? [] : [entity];
-        });
+  const members: readonly StateEntity[] = whole
+    ? store.inCollection(view.type, collection)
+    : recorded.flatMap((item) => {
+        const id = scalarText(item[type?.id_field ?? ""]);
+        const entity =
+          id === undefined
+            ? undefined
+            : store.entity(view.type, collection, id);
+        return entity === undefined ? [] : [entity];
+      });
   const volatile = new Set(type?.volatile_fields);
   const items: JsonObject[] = [];
   for (const entity of members) {
