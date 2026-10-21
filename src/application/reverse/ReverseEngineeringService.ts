@@ -74,6 +74,7 @@ interface ReverseEngineeringCommandRunner {
     readonly stderrInvalidUtf8?: boolean;
     readonly stdoutBytes?: number;
     readonly stderrBytes?: number;
+    readonly outputTruncated?: boolean;
   }>;
 }
 
@@ -420,6 +421,7 @@ export class ReverseEngineeringService {
       stderrBytes = output.stderrBytes ?? Buffer.byteLength(stderr);
       stdoutInvalidUtf8 = output.stdoutInvalidUtf8 === true;
       stderrInvalidUtf8 = output.stderrInvalidUtf8 === true;
+      outputTruncated = output.outputTruncated === true;
     } catch (cause) {
       cleanupOwner =
         cause instanceof OwnedOutputFailure ? cause.cleanupOwner : undefined;
@@ -683,7 +685,9 @@ export class ReverseEngineeringService {
         : []),
       ...(outputTruncated
         ? [
-            "The provider command ended before completion could be confirmed; captured output is partial.",
+            completionStatus === "complete"
+              ? "The command completed, but part of its captured output was omitted; captured output is partial."
+              : "The provider command ended before completion could be confirmed; captured output is partial.",
           ]
         : []),
       ...(signalName === null
@@ -872,6 +876,7 @@ const runOwnedCommandOutput =
         stderrInvalidUtf8: snapshot.stderr.invalidUtf8 === true,
         stdoutBytes: snapshot.stdout.bytes,
         stderrBytes: snapshot.stderr.bytes,
+        outputTruncated: snapshot.diagnosticTruncated === true,
       };
     } catch (cause) {
       if (!(cause instanceof OwnedCommandFailure)) throw cause;
