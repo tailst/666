@@ -12,15 +12,15 @@ import {
 import { projectAnalysisError } from "../../domain/analysisErrorProjection.js";
 import { inspectAnalysisView } from "../analysisView/AnalysisViewService.js";
 import {
-  pathValueMatches,
   REPLAY_BODY_LIMIT_BYTES,
+  type EnvironmentSource,
+  type RecordedExchange,
+} from "./environmentSource.js";
+import {
+  pathValueMatches,
   replayEnvironmentTool,
   selectReplayExchange,
 } from "./environmentReplay.js";
-import type {
-  EnvironmentSource,
-  RecordedExchange,
-} from "./environmentSource.js";
 
 const source = environmentServeSource();
 
