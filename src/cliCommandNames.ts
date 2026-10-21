@@ -64,6 +64,7 @@ export const CLI_COMMANDS = Object.freeze({
   inspectModelArtifact: "inspect-model-artifact",
   inspectGpuCodeObjects: "inspect-gpu-code-objects",
   inspectRustBinary: "inspect-rust-binary",
+  inspectPythonPyc: "inspect-python-pyc",
   inspectPeResources: "inspect-pe-resources",
   inspectAnalysisView: "inspect-analysis-view",
   listFridaDevices: "list-frida-devices",
