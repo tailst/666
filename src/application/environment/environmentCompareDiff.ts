@@ -109,12 +109,13 @@ class Differ {
     unobserved_bodies: 0,
   };
 
-  /** The answer's own entities: where they sit (the object, or the array of them, at `at`) and the collection the call names, whose own mapping their identities compare by. */
+  /** The answer's own entities: where they sit (the object, or the array of them, at `at`) and the collection the call names, whose own mapping their identities compare by. `identity` marks a write that answers with only the new id, at `at`. */
   constructor(
     readonly map: IdMap,
     readonly entity: {
       readonly scope: string | undefined;
       readonly at: string;
+      readonly identity: boolean;
     },
   ) {}
 
@@ -134,12 +135,15 @@ class Differ {
       (typeof live === "string" || typeof live === "number") &&
       (typeof env === "string" || typeof env === "number")
     ) {
-      // An entity's own identity compares within the call's collection; any other id by the probe's mapping.
+      // An entity's own identity compares within the call's collection, as does a
+      // create that answers with only the new id at its response pointer. Any
+      // other id compares by the probe's mapping.
+      const inCollection =
+        (this.entity.identity && pointer === this.entity.at) ||
+        (at.own === true && key !== undefined && IDENTITY_FIELD.test(key));
       const mapped = this.map.env(
         live,
-        at.own === true && key !== undefined && IDENTITY_FIELD.test(key)
-          ? this.entity.scope
-          : undefined,
+        inCollection ? this.entity.scope : undefined,
       );
       if (mapped !== undefined && String(mapped) === String(env)) {
         this.normalised.ids += 1;
@@ -298,9 +302,17 @@ export const compareAnswers = (
   live: Answer,
   env: Answer,
   map: IdMap,
-  entity: { readonly scope?: string; readonly at?: string } = {},
+  entity: {
+    readonly scope?: string;
+    readonly at?: string;
+    readonly identity?: boolean;
+  } = {},
 ): { readonly differences: Difference[]; readonly normalised: Normalised } => {
-  const differ = new Differ(map, { scope: entity.scope, at: entity.at ?? "" });
+  const differ = new Differ(map, {
+    scope: entity.scope,
+    at: entity.at ?? "",
+    identity: entity.identity === true,
+  });
   if (live.status !== env.status)
     differ.add({
       category: "status",

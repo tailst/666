@@ -491,6 +491,36 @@ describe("ids the comparison used to misread", () => {
     ]);
   });
 
+  it("compares a create id within its collection when another collection already mapped that live id", () => {
+    const item = (id: number, name: string) => ({ id, name });
+    const recorded = (
+      created: number | { readonly created: number },
+    ): TimedCaptureRow[] => [
+      ["GET", "/api/books", [item(1, "Book")]],
+      ["GET", "/api/books/1", item(1, "Book")],
+      ["GET", "/api/authors", [item(2, "Ann")]],
+      ["GET", "/api/authors/2", item(2, "Ann")],
+      ["POST", "/api/authors", created, 201, { name: "Bob" }],
+      ["GET", "/api/authors/3", item(3, "Bob")],
+      ["GET", "/api/authors", [item(2, "Ann"), item(3, "Bob")]],
+    ];
+    const probe = (
+      created: number | { readonly created: number },
+    ): TimedCaptureRow[] => [
+      ["GET", "/api/books", [item(103, "Book")]],
+      ["POST", "/api/authors", created, 201, { name: "Bob" }],
+      ["GET", "/api/authors/103", item(103, "Bob")],
+    ];
+    expect(
+      compareRows(recorded(3), probe(103)).results.map((step) => step.equal),
+    ).toEqual([true, true, true]);
+    expect(
+      compareRows(recorded({ created: 3 }), probe({ created: 103 })).results.map(
+        (step) => step.equal,
+      ),
+    ).toEqual([true, true, true]);
+  });
+
   it("keeps each parent's child ids and does not rename a literal route segment", () => {
     const users = (id: number, name: string) => ({ id, name });
     const probe = compareRows(

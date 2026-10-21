@@ -179,6 +179,43 @@ describe("ids two collections reuse", () => {
   });
 });
 
+describe("identity responses two collections reuse", () => {
+  it("compares a create's bare id and created member within the call's collection", () => {
+    const books = new IdMap();
+    books.learn(103, 1, "/api/books");
+    learnIds(103, 3, books, {
+      heldIds: new Set(),
+      scope: "/api/authors",
+      identity: true,
+    });
+    const created = new IdMap();
+    created.learn(103, 1, "/api/books");
+    learnIds({ created: 103 }, { created: 3 }, created, {
+      heldIds: new Set(),
+      scope: "/api/authors",
+      entityAt: "/created",
+      identity: true,
+    });
+    const answer = (body: JsonValue) => ({ status: 201, body });
+    expect(books.env(103)).toBe(1);
+    expect(books.env(103, "/api/authors")).toBe(3);
+    expect(created.env(103, "/api/authors")).toBe(3);
+    expect(
+      compareAnswers(answer(103), answer(3), books, {
+        scope: "/api/authors",
+        identity: true,
+      }).differences,
+    ).toEqual([]);
+    expect(
+      compareAnswers(answer({ created: 103 }), answer({ created: 3 }), created, {
+        scope: "/api/authors",
+        at: "/created",
+        identity: true,
+      }).differences,
+    ).toEqual([]);
+  });
+});
+
 describe("wrapped answers", () => {
   it("compares the identity of an entity inside an envelope within the call's collection", () => {
     const map = new IdMap();
