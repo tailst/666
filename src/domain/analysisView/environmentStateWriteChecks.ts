@@ -165,12 +165,20 @@ export class SimulatedState {
   readonly #collections = new Map<string, string[]>();
   readonly #documents = new Map<string, JsonValue>();
   readonly #removed: RemovedTarget[] = [];
+  /** Entity keys in serving's state order, which orders a type's collections by their first entity. */
+  #order: string[] = [];
+  /** Each type's collections in the order serving first knew them, which emptying does not change. */
+  readonly #known = new Map<string, Set<string>>();
 
   constructor(
     entities: readonly StateEntity[],
     documents: readonly StateDocument[],
   ) {
     for (const entity of entities) this.put(entity);
+    // Serving holds the Evidence's entities in their own order; only later creates sit beside their collection.
+    this.#order = entities.map((entity) =>
+      entityTarget(entity.type, entity.collection, entity.id),
+    );
     for (const document of documents)
       this.#documents.set(document.tool, document.value);
   }
@@ -190,9 +198,14 @@ export class SimulatedState {
   }
 
   ofType(type: string): StateEntity[] {
-    return [...this.#entities.values()].filter(
-      (entity) => entity.type === type,
-    );
+    return this.#order
+      .map((key) => this.#entities.get(key)!)
+      .filter((entity) => entity.type === type);
+  }
+
+  /** Every collection of a type the state has held, in the order serving remembers them. */
+  knownCollections(type: string): readonly string[] {
+    return [...(this.#known.get(type) ?? [])];
   }
 
   /** Replace an entity in place, or add it at `index` of its collection (the end when omitted). */
@@ -203,13 +216,24 @@ export class SimulatedState {
     if (known) return;
     const collection = collectionTarget(entity.type, entity.collection);
     const order = this.#collections.get(collection) ?? [];
-    order.splice(index ?? order.length, 0, key);
+    const at = index ?? order.length;
+    const anchor =
+      at < order.length
+        ? this.#order.indexOf(order[at]!)
+        : order.length > 0
+          ? this.#order.indexOf(order.at(-1)!) + 1
+          : this.#order.length;
+    this.#order.splice(anchor, 0, key);
+    order.splice(at, 0, key);
     this.#collections.set(collection, order);
+    const collections = this.#known.get(entity.type) ?? new Set<string>();
+    this.#known.set(entity.type, collections.add(entity.collection));
   }
 
   remove(entity: StateEntity): void {
     const key = entityTarget(entity.type, entity.collection, entity.id);
     this.#entities.delete(key);
+    this.#order = this.#order.filter((member) => member !== key);
     const collection = collectionTarget(entity.type, entity.collection);
     const order = this.#collections.get(collection) ?? [];
     this.#collections.set(

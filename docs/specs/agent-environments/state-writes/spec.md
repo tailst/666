@@ -170,7 +170,8 @@ values take another form than serving gives them (a sequence value out of
 order, a clock in another format, a non-UUID unique value) makes the plan
 `unexplained-change`; integer identities are left to the id mapping. A later
 create outside the collection a tied plan permits is unmodelled, as serving
-refuses that call, so a read of what it recorded does not confirm the plan. An update or
+refuses that call, so a read of what it recorded does not confirm the plan. The
+gate picks that collection among equal spellings in serving's order (below). An update or
 delete names its entity as an item read does (below).
 
 Any other write that may have changed state, including a redirected or
@@ -322,7 +323,8 @@ entity; a collection keeps its spelling after its last entity is deleted. A
 reset or load knows the spellings of the Evidence's state, of the state it
 installs and of the type's checked list lines (so a collection the capture
 listed empty keeps its spelling), never those of a state it replaced. When two
-spellings fit a call equally, the one holding entities wins. `data/add` refuses a document that `data/get` would write back past the
+spellings fit a call equally, the one holding entities wins, the earlier first
+entity in state order among held ones and the earlier known among emptied ones. `data/add` refuses a document that `data/get` would write back past the
 32 MiB intake limit once it adds the members a document may omit, such as
 `types` and the state Evidence id. A derived state `data/get` would write
 past that limit is not served: the environment serves replay and reports the

@@ -254,7 +254,7 @@ const recordedSegments = (
   return segments;
 };
 
-/** Collections a create may join, in serving's order: held entities, then removed ones, then checked list lines. */
+/** Collections a create may join, in serving's order: held ones, then emptied ones as first known, then checked list lines. */
 const createCandidates = (context: EffectContext, type: string): string[] => {
   const candidates: string[] = [];
   const seen = new Set<string>();
@@ -264,8 +264,8 @@ const createCandidates = (context: EffectContext, type: string): string[] => {
     candidates.push(collection);
   };
   for (const entity of context.state.ofType(type)) add(entity.collection);
-  for (const target of context.state.removedTargets(type))
-    add(target.collection);
+  for (const collection of context.state.knownCollections(type))
+    add(collection);
   for (const record of context.records) {
     const view = context.viewOf(record.ordinal);
     if (

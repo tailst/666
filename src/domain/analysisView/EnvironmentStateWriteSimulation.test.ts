@@ -2082,4 +2082,67 @@ describe("creates tied to one collection", () => {
       checked_record_ordinals: [],
     });
   });
+
+  it("chooses among emptied spellings of a tied collection in the order serving remembers them", () => {
+    const first = "/api/orgs/uid/%61cme1/books";
+    const second = "/api/orgs/uid/a%63me1/books";
+    const alpha = {
+      ...book(1, "Alpha", "2026-10-01T09:00:00Z"),
+      team: "/orgs/uid/acme1",
+    };
+    const beta = {
+      ...book(10, "Beta", "2026-10-01T10:00:00Z"),
+      team: "/orgs/uid/acme1",
+    };
+    const made = tiedToAcme(2, "Made", 4);
+    const other = tiedToAcme(3, "Other", 8);
+    // The second spelling empties before the first, but serving still offers the first spelling first.
+    const rows: TimedCaptureRow[] = [
+      ["GET", first, [alpha]],
+      ["GET", second, [beta]],
+      ["GET", `${first}/1`, alpha],
+      ["GET", `${second}/10`, beta],
+      ["POST", second, made, 201, { name: "Made" }],
+      ["DELETE", `${second}/10`, "", 204],
+      ["DELETE", `${second}/2`, "", 204],
+      ["DELETE", `${first}/1`, "", 204],
+      ["POST", "/api/orgs/uid/acme1/books", other, 201, { name: "Other" }],
+      ["GET", "/api/orgs/uid/acme1/books/3", other],
+    ];
+    expect(acmeCreate(rows)).toMatchObject({
+      collection: second,
+      checked_record_ordinals: [],
+    });
+  });
+
+  it("keeps a tied collection ahead of another spelling once its first entity is gone, as serving orders them", () => {
+    const first = "/api/orgs/uid/%61cme1/books";
+    const second = "/api/orgs/uid/a%63me1/books";
+    const alpha = {
+      ...book(1, "Alpha", "2026-10-01T09:00:00Z"),
+      team: "/orgs/uid/acme1",
+    };
+    const beta = {
+      ...book(10, "Beta", "2026-10-01T10:00:00Z"),
+      team: "/orgs/uid/acme1",
+    };
+    const made = tiedToAcme(2, "Made", 4);
+    const other = tiedToAcme(3, "Other", 6);
+    // Serving places the created book beside its collection, so the first spelling still leads after its first book goes.
+    const rows: TimedCaptureRow[] = [
+      ["GET", first, [alpha]],
+      ["GET", second, [beta]],
+      ["GET", `${first}/1`, alpha],
+      ["GET", `${second}/10`, beta],
+      ["POST", first, made, 201, { name: "Made" }],
+      ["DELETE", `${first}/1`, "", 204],
+      ["POST", "/api/orgs/uid/acme1/books", other, 201, { name: "Other" }],
+      ["GET", "/api/orgs/uid/acme1/books/3", other],
+    ];
+    expect(acmeCreate(rows)).toMatchObject({
+      served: true,
+      collection: first,
+      checked_record_ordinals: [7],
+    });
+  });
 });
