@@ -19,6 +19,7 @@ import {
   type StateToolFacts,
   type StateView,
 } from "./environmentStateRules.js";
+import { pagesOnly } from "./environmentStatePaging.js";
 import { ENTRY_BYTES, textBytes } from "./webNetworkRouteTemplates.js";
 
 /** A read tool whose recordings locate entities of one type at one pointer. */
@@ -31,6 +32,8 @@ export interface StatePlan {
   readonly recordings: readonly StateRecordFacts[];
   /** The latest of them per request line, in timeline order. */
   readonly latest: readonly StateRecordFacts[];
+  /** Item reads left to replay because they asked for some fields only. */
+  readonly projected?: readonly number[];
 }
 
 /** What the gate reads from an extraction; `withBody` drops each body's temporary work after `use`. */
@@ -155,6 +158,9 @@ export const checkItemPlan = (
     required_fields: union.required,
     envelope_ordinal: plan.latest[0]!.ordinal,
     checked_record_ordinals: plan.latest.map((record) => record.ordinal),
+    ...(plan.projected === undefined || plan.projected.length === 0
+      ? {}
+      : { projected_record_ordinals: [...plan.projected] }),
   };
 };
 
@@ -173,8 +179,9 @@ const listFacts = (
         body === undefined ? undefined : listItems(body, plan.pointer);
       if (body === undefined || items === undefined) return;
       items.forEach((item) => union.add(item));
-      // Once a list cannot be the whole collection, its membership is not compared again.
-      if (all && record.query === undefined) {
+      // Once a list cannot be the whole collection, its membership is not compared again; a line
+      // that only pages its list can still hold all of it.
+      if (all && pagesOnly(record.query)) {
         const ids = items.map((item) => scalarText(item[field]) ?? "");
         const expected = context
           .inCollection(plan.type, collectionPathOf(record, false))
