@@ -1,5 +1,10 @@
 import { canonicalJson } from "../comparisonSemantics.js";
 import type { JsonValue } from "../jsonValue.js";
+import type { StateWritePlan } from "./environmentStateWriteRules.js";
+import {
+  respellClock,
+  type ClockFormat,
+} from "./environmentStateWriteValues.js";
 import { ENTRY_BYTES, textBytes } from "./webNetworkRouteTemplates.js";
 
 /** How records are ordered: by recorded start time, or by record order when any start time is missing. */
@@ -33,6 +38,10 @@ export type ParsedBody =
 /** Budgeted access the accumulator lends extraction; null and false mean the budget is exhausted. */
 export interface StateBudget {
   readonly body: (ordinal: number) => ParsedBody | null;
+  /** A record's request body, admitted as response bodies are. */
+  readonly requestBody: (ordinal: number) => ParsedBody | null;
+  /** Whether a record's response had no body. */
+  readonly emptyResponse: (ordinal: number) => boolean;
   readonly retain: (bytes: number) => boolean;
   /** Drop the temporary work of the body just read. */
   readonly release: () => void;
@@ -93,6 +102,8 @@ interface EntityViewPlan {
   readonly fields: string[];
   readonly required_fields: string[];
   readonly checked_record_ordinals: number[];
+  /** How the view spells the clock fields it always spells otherwise than the entities' stored values. */
+  readonly clock_formats?: Readonly<Record<string, ClockFormat>> | undefined;
 }
 
 export type StateItemView = EntityViewPlan & {
@@ -125,6 +136,9 @@ export interface ExtractedState {
   readonly entities: StateEntity[];
   readonly documents: StateDocument[];
   readonly views: StateView[];
+  readonly writes: StateWritePlan[];
+  /** The instant a served clock starts from: the end of the capture's last timed record, or null without times. */
+  readonly write_clock: string | null;
 }
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -181,15 +195,18 @@ export const same = (
     : canonicalJson(left, "Environment state") ===
       canonicalJson(right, "Environment state");
 
-/** The decoded final path segment, which an item request names its entity by. */
-export const lastSegmentValue = (path: string): string => {
-  const segment = segmentsOf(path).at(-1) ?? "";
+/** A path segment percent-decoded, or as written when it does not decode. */
+export const decodedSegment = (segment: string): string => {
   try {
     return decodeURIComponent(segment);
   } catch {
     return segment;
   }
 };
+
+/** The decoded final path segment, which an item request names its entity by. */
+export const lastSegmentValue = (path: string): string =>
+  decodedSegment(segmentsOf(path).at(-1) ?? "");
 
 /** A path's non-empty segments, so a trailing slash names the same collection. */
 export const normalizedPath = (path: string): string =>
@@ -489,13 +506,14 @@ export const listItems = (
 /** One entity as a view shows it: the view's fields it has, view-specific values first; volatile fields take `observed` values when given. */
 export const renderStateEntity = (
   entity: StateEntity,
-  view: Pick<EntityViewPlan, "tool" | "fields">,
+  view: Pick<EntityViewPlan, "tool" | "fields" | "clock_formats">,
   volatileFields: ReadonlySet<string>,
   observed?: JsonObject,
 ): JsonObject => {
   const own =
     entity.view_fields.find((candidate) => candidate.tool === view.tool)
       ?.fields ?? {};
+  const formats = view.clock_formats ?? {};
   return Object.fromEntries(
     view.fields.flatMap((name): [string, JsonValue][] => {
       const source =
@@ -504,9 +522,28 @@ export const renderStateEntity = (
           : Object.hasOwn(own, name)
             ? own
             : entity.fields;
-      return Object.hasOwn(source, name) ? [[name, source[name]!]] : [];
+      if (!Object.hasOwn(source, name)) return [];
+      // A stored value the view never recorded, such as a written one, takes the view's spelling.
+      return [
+        [
+          name,
+          source === entity.fields && Object.hasOwn(formats, name)
+            ? respellClock(source[name]!, formats[name]!)
+            : source[name]!,
+        ],
+      ];
     }),
   );
+};
+
+/** The fields every recording of a view carried that the entity, as serving renders it, lacks; serving refuses to answer with such an entity. */
+export const missingRequiredFields = (
+  entity: StateEntity,
+  view: Pick<EntityViewPlan, "tool" | "fields" | "required_fields">,
+  volatileFields: ReadonlySet<string>,
+): string[] => {
+  const shown = renderStateEntity(entity, view, volatileFields);
+  return view.required_fields.filter((name) => !Object.hasOwn(shown, name));
 };
 
 /** A list response rendered from `base`: its array replaced by `items` and its counters set to their number. */
