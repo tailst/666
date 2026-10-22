@@ -1009,6 +1009,7 @@ const registerObservationTools = ({
   registerWebScriptTool(server, { ...common, artifactResources });
   registerBrowserTools(server, {
     ...common,
+    evidenceById,
     browser: options.browserObservation,
     loadFailure: options.optionalProviderLoadFailures?.browserObservation,
   });
