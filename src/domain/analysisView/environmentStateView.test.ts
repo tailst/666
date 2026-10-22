@@ -1041,7 +1041,11 @@ it("does not let an empty ?page=2 page prove membership all", () => {
 it("does not let ?page=2&per_page=1 prove membership all when it lists the collection", () => {
   const state = stateOf(
     captureOf([
-      ["GET", "/api/orgs/1/books?page=2&per_page=1", [{ id: 1, name: "Alpha" }]],
+      [
+        "GET",
+        "/api/orgs/1/books?page=2&per_page=1",
+        [{ id: 1, name: "Alpha" }],
+      ],
       ["GET", "/api/orgs/1/books/1", { id: 1, name: "Alpha" }],
     ]),
   );

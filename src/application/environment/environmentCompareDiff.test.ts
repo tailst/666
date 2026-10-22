@@ -207,11 +207,16 @@ describe("identity responses two collections reuse", () => {
       }).differences,
     ).toEqual([]);
     expect(
-      compareAnswers(answer({ created: 103 }), answer({ created: 3 }), created, {
-        scope: "/api/authors",
-        at: "/created",
-        identity: true,
-      }).differences,
+      compareAnswers(
+        answer({ created: 103 }),
+        answer({ created: 3 }),
+        created,
+        {
+          scope: "/api/authors",
+          at: "/created",
+          identity: true,
+        },
+      ).differences,
     ).toEqual([]);
   });
 });

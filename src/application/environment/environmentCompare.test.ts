@@ -515,9 +515,10 @@ describe("ids the comparison used to misread", () => {
       compareRows(recorded(3), probe(103)).results.map((step) => step.equal),
     ).toEqual([true, true, true]);
     expect(
-      compareRows(recorded({ created: 3 }), probe({ created: 103 })).results.map(
-        (step) => step.equal,
-      ),
+      compareRows(
+        recorded({ created: 3 }),
+        probe({ created: 103 }),
+      ).results.map((step) => step.equal),
     ).toEqual([true, true, true]);
   });
 
