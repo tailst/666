@@ -1,5 +1,6 @@
 import { canonicalJson } from "../comparisonSemantics.js";
 import type { JsonValue } from "../jsonValue.js";
+import type { StateWritePlan } from "./environmentStateWriteRules.js";
 import { ENTRY_BYTES, textBytes } from "./webNetworkRouteTemplates.js";
 
 /** How records are ordered: by recorded start time, or by record order when any start time is missing. */
@@ -33,6 +34,10 @@ export type ParsedBody =
 /** Budgeted access the accumulator lends extraction; null and false mean the budget is exhausted. */
 export interface StateBudget {
   readonly body: (ordinal: number) => ParsedBody | null;
+  /** A record's request body, admitted as response bodies are. */
+  readonly requestBody: (ordinal: number) => ParsedBody | null;
+  /** Whether a record's response had no body. */
+  readonly emptyResponse: (ordinal: number) => boolean;
   readonly retain: (bytes: number) => boolean;
   /** Drop the temporary work of the body just read. */
   readonly release: () => void;
@@ -125,6 +130,9 @@ export interface ExtractedState {
   readonly entities: StateEntity[];
   readonly documents: StateDocument[];
   readonly views: StateView[];
+  readonly writes: StateWritePlan[];
+  /** The instant a served clock starts from: the end of the capture's last timed record, or null without times. */
+  readonly write_clock: string | null;
 }
 
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -181,15 +189,72 @@ export const same = (
     : canonicalJson(left, "Environment state") ===
       canonicalJson(right, "Environment state");
 
-/** The decoded final path segment, which an item request names its entity by. */
-export const lastSegmentValue = (path: string): string => {
-  const segment = segmentsOf(path).at(-1) ?? "";
+/** A path segment percent-decoded, or as written when it does not decode. */
+export const decodedSegment = (segment: string): string => {
   try {
     return decodeURIComponent(segment);
   } catch {
     return segment;
   }
 };
+
+/**
+ * Whether two path spellings name one segment: they are equal, or either decodes once to the other.
+ * Decoding both would make `book%2531` match `book1`.
+ */
+export const pathSegmentMatches = (segment: string, value: string): boolean =>
+  segment === value ||
+  decodedSegment(segment) === value ||
+  decodedSegment(value) === segment;
+
+/** One segment of a call: a template literal, or a supplied path value. */
+export interface SuppliedSegment {
+  readonly text: string;
+  readonly supplied: boolean;
+}
+
+/** How many supplied segments a held collection matches verbatim, when it matches the call under the path rule. */
+export const collectionMatch = (
+  collection: string,
+  segments: readonly SuppliedSegment[],
+): number | undefined => {
+  const held = segmentsOf(collection);
+  if (held.length !== segments.length) return undefined;
+  let verbatim = 0;
+  for (const [index, { text, supplied }] of segments.entries()) {
+    const segment = held[index]!;
+    if (supplied ? !pathSegmentMatches(segment, text) : segment !== text)
+      return undefined;
+    if (supplied && segment === text) verbatim += 1;
+  }
+  return verbatim;
+};
+
+/** The collection a create writes: the candidate with the most verbatim supplied segments, the earliest on a tie, else the call with each supplied segment encoded. */
+export const selectedCollection = (
+  segments: readonly SuppliedSegment[],
+  candidates: readonly string[],
+): string => {
+  let chosen: string | undefined;
+  let verbatim = -1;
+  for (const collection of candidates) {
+    const matched = collectionMatch(collection, segments);
+    if (matched !== undefined && matched > verbatim) {
+      chosen = collection;
+      verbatim = matched;
+    }
+  }
+  return (
+    chosen ??
+    `/${segments
+      .map(({ text, supplied }) => (supplied ? encodeURIComponent(text) : text))
+      .join("/")}`
+  );
+};
+
+/** The decoded final path segment, which an item request names its entity by. */
+export const lastSegmentValue = (path: string): string =>
+  decodedSegment(segmentsOf(path).at(-1) ?? "");
 
 /** A path's non-empty segments, so a trailing slash names the same collection. */
 export const normalizedPath = (path: string): string =>
@@ -507,6 +572,16 @@ export const renderStateEntity = (
       return Object.hasOwn(source, name) ? [[name, source[name]!]] : [];
     }),
   );
+};
+
+/** The fields every recording of a view carried that the entity, as serving renders it, lacks; serving refuses to answer with such an entity. */
+export const missingRequiredFields = (
+  entity: StateEntity,
+  view: Pick<EntityViewPlan, "tool" | "fields" | "required_fields">,
+  volatileFields: ReadonlySet<string>,
+): string[] => {
+  const shown = renderStateEntity(entity, view, volatileFields);
+  return view.required_fields.filter((name) => !Object.hasOwn(shown, name));
 };
 
 /** A list response rendered from `base`: its array replaced by `items` and its counters set to their number. */
